@@ -56,7 +56,7 @@ export interface Curriculum {
 
 const MODULE_DEFS: Omit<Module, "chapters">[] = [
   { id: "m1", title: "Python 语言核心", subtitle: "思维转换 · 数据结构 · OOP · 类型", dir: "01_python_core", available: true },
-  { id: "m2", title: "标准库 & 三方库", subtitle: "collections · itertools · 正则 · json", dir: "02_stdlib", available: false },
+  { id: "m2", title: "标准库 & 三方库", subtitle: "collections · itertools · 正则 · json", dir: "02_stdlib", available: true },
   { id: "m3", title: "Web 框架 FastAPI", subtitle: "API · ORM · 认证 · 部署", dir: "03_web_framework", available: false },
   { id: "m4", title: "运维脚本", subtitle: "pathlib · subprocess · CLI · 监控", dir: "04_devops_scripts", available: false },
   { id: "m5", title: "AI 框架", subtitle: "LLM · Prompt · RAG · Agent", dir: "05_ai_framework", available: false },
