@@ -57,6 +57,9 @@ export default function ExerciseRunner({ chapter, shared, func, pyReady, onPyRea
 
   const busy = status === "loading" || status === "running";
 
+  // 按初始内容行数自适应高度:短题也给够空间,只有特别长的才滚动
+  const editorHeight = Math.min(620, Math.max(300, func.skeleton.split("\n").length * 20 + 28));
+
   return (
     <div className="my-4 rounded-lg border border-border-subtle bg-bg-card p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -80,7 +83,7 @@ export default function ExerciseRunner({ chapter, shared, func, pyReady, onPyRea
       </div>
       <div className="overflow-hidden rounded-md border border-border-subtle">
         <Editor
-          height="200px"
+          height={editorHeight}
           defaultLanguage="python"
           theme="dracula"
           beforeMount={defineDracula}

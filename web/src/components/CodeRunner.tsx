@@ -51,6 +51,9 @@ export default function CodeRunner({ chapter, shared }: Props) {
 
   const busy = status === "loading" || status === "running";
 
+  // 按内容行数自适应:整章作业通常较长,给足高度,超长才滚动
+  const editorHeight = Math.min(680, Math.max(360, chapter.assignment.split("\n").length * 20 + 28));
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -73,7 +76,7 @@ export default function CodeRunner({ chapter, shared }: Props) {
 
       <div className="overflow-hidden rounded-lg border border-border-subtle">
         <Editor
-          height="420px"
+          height={editorHeight}
           defaultLanguage="python"
           theme="dracula"
           beforeMount={defineDracula}
