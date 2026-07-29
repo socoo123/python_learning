@@ -18,7 +18,7 @@ export function defineDracula(monaco: Monaco) {
       { token: "operator", foreground: "ff79c6" },
     ],
     colors: {
-      "editor.background": "#191a21",
+      "editor.background": "#0d0e13",
       "editor.foreground": "#f8f8f2",
       "editor.lineHighlightBackground": "#262833",
       "editor.selectionBackground": "#44475a",

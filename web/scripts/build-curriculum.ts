@@ -259,7 +259,7 @@ export function buildCurriculum(): Curriculum | null {
   const modules = MODULE_DEFS.map(buildModule);
   const mockDir = path.join(REPO_ROOT, "assets", "mock_data");
   const mocks: Record<string, string> = {};
-  if (existsSync(mockDir)) for (const f of readdirSync(mockDir)) mocks[f] = readText(path.join(mockDir, f));
+  if (existsSync(mockDir)) for (const f of readdirSync(mockDir).sort()) mocks[f] = readText(path.join(mockDir, f));
   const conftest = safeRead(path.join(REPO_ROOT, "conftest.py"));
   const curriculum: Curriculum = { modules, shared: { conftest, mocks } };
   mkdirSync(OUT_DIR, { recursive: true });

@@ -21,7 +21,7 @@ const PILL: Record<Status, { text: string; cls: string }> = {
 export default function Terminal({ output, status }: { output: string; status: Status }) {
   const pill = PILL[status];
   return (
-    <div className={`overflow-hidden rounded-lg border ${BORDER[status]} bg-[#21222c]`}>
+    <div className={`overflow-hidden rounded-lg border ${BORDER[status]} bg-bg-card`}>
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2">
         <span className="h-2.5 w-2.5 rounded-full bg-drac-red/80" />
         <span className="h-2.5 w-2.5 rounded-full bg-drac-orange/80" />

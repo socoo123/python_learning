@@ -129,7 +129,7 @@ function LocalNotice({ chapter, moduleDir }: { chapter: { num: string }; moduleD
         <li>① 打开 <code className="rounded bg-bg-elev px-1.5 py-0.5 text-accent">{moduleDir}/ch{chapter.num}/ch{chapter.num}_assignment.py</code> 写实现</li>
         <li>② 终端运行:</li>
       </ol>
-      <div className="mt-2 flex items-center gap-2 rounded-md border border-border-subtle bg-[#21222c] p-3">
+      <div className="mt-2 flex items-center gap-2 rounded-md border border-border-subtle bg-bg-card p-3">
         <code className="flex-1 font-mono text-xs text-zinc-300">{cmd}</code>
         <CopyButton text={cmd} />
       </div>

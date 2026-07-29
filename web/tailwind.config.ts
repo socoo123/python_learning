@@ -6,20 +6,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 语义 token(加深背景 + 粉色主强调,去雾用实色不用半透明)
-        bg: { base: "#191a21", card: "#21222c", elev: "#2a2c36" },
-        border: { subtle: "#44475a", strong: "#7d83a8" },
-        accent: { DEFAULT: "#ff79c6", muted: "#ff79c6" }, // 粉(主强调)
-        // Dracula 原色
+        // 语义 token:近黑背景 + 高对比 + 饱和粉主强调
+        bg: { base: "#0d0e13", card: "#181a22", elev: "#23262f" },
+        border: { subtle: "#363a48", strong: "#8b90b8" },
+        accent: { DEFAULT: "#ff4fa3", muted: "#ff4fa3" }, // 饱和粉
+        // Dracula 原色(提亮 fg)
         drac: {
-          bg: "#191a21",
+          bg: "#0d0e13",
           line: "#44475a",
-          fg: "#f8f8f2",
-          comment: "#6272a4",
+          fg: "#ffffff",
+          comment: "#7d83a8",
           cyan: "#8be9fd",
           green: "#50fa7b",
           orange: "#ffb86c",
-          pink: "#ff79c6",
+          pink: "#ff4fa3",
           purple: "#bd93f9",
           red: "#ff5555",
           yellow: "#f1fa8c",
