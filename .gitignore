@@ -1,0 +1,24 @@
+# 虚拟环境
+.venv/
+venv/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地数据 / 密钥（AI 章节会用到 API key，绝不提交）
+.env
+*.local
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Web 子项目(node_modules / 构建产物,体积大绝不提交)
+web/node_modules/
+web/dist/

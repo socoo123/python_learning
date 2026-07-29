@@ -1,0 +1,22 @@
+[
+  "2026-07-18 09:00:00 INFO Server started on port 8000",
+  "2026-07-18 09:00:01 INFO DB connection pool initialized",
+  "2026-07-18 09:00:02 WARN Cache miss rate high (35%)",
+  "2026-07-18 09:00:03 ERROR Failed to connect to redis at localhost:6379",
+  "2026-07-18 09:00:04 INFO Health check OK",
+  "2026-07-18 09:00:05 ERROR NullPointerException in OrderService.process",
+  "2026-07-18 09:00:06 WARN Response slow: /api/products (2.3s)",
+  "2026-07-18 09:00:07 INFO User admin logged in",
+  "2026-07-18 09:00:08 ERROR Database transaction timeout after 30s",
+  "2026-07-18 09:00:09 INFO Scheduled task completed",
+  "2026-07-18 09:00:10 WARN Disk usage 82%",
+  "2026-07-18 09:00:11 INFO Request /api/orders 200",
+  "2026-07-18 09:00:12 ERROR Payment gateway unreachable",
+  "2026-07-18 09:00:13 INFO Request /api/users 200",
+  "2026-07-18 09:00:14 WARN Memory usage 78%",
+  "2026-07-18 09:00:15 INFO Background job queue size: 3",
+  "2026-07-18 09:00:16 ERROR Failed to parse JSON response from supplier",
+  "2026-07-18 09:00:17 INFO Backup completed",
+  "2026-07-18 09:00:18 WARN API rate limit approaching",
+  "2026-07-18 09:00:19 INFO Shutdown signal received"
+]

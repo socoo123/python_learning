@@ -1,0 +1,22 @@
+[
+  { "ip": "192.168.1.1",   "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "192.168.1.1",   "method": "GET",    "path": "/api/orders",      "status": 200 },
+  { "ip": "192.168.1.1",   "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "192.168.1.1",   "method": "POST",   "path": "/api/orders",      "status": 201 },
+  { "ip": "192.168.1.1",   "method": "GET",    "path": "/",                "status": 200 },
+  { "ip": "10.0.0.5",      "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "10.0.0.5",      "method": "GET",    "path": "/api/users",       "status": 200 },
+  { "ip": "10.0.0.5",      "method": "DELETE", "path": "/api/orders/1",    "status": 500 },
+  { "ip": "172.16.0.3",    "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "172.16.0.3",    "method": "GET",    "path": "/api/orders",      "status": 200 },
+  { "ip": "8.8.8.8",       "method": "GET",    "path": "/admin",           "status": 404 },
+  { "ip": "8.8.8.8",       "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "1.1.1.1",       "method": "GET",    "path": "/api/products",    "status": 200 },
+  { "ip": "1.1.1.1",       "method": "POST",   "path": "/api/users",       "status": 201 },
+  { "ip": "203.0.113.5",   "method": "GET",    "path": "/login",           "status": 401 },
+  { "ip": "203.0.113.5",   "method": "POST",   "path": "/login",           "status": 200 },
+  { "ip": "198.51.100.2",  "method": "GET",    "path": "/api/products",    "status": 500 },
+  { "ip": "198.51.100.2",  "method": "GET",    "path": "/api/products",    "status": 500 },
+  { "ip": "192.0.2.1",     "method": "GET",    "path": "/",                "status": 200 },
+  { "ip": "192.0.2.1",     "method": "GET",    "path": "/api/products",    "status": 200 }
+]

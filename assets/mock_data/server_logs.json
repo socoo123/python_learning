@@ -1,0 +1,13 @@
+[
+  "2026-07-24T10:00:01 500 GET /api/orders",
+  "2026-07-24T10:00:15 500 GET /api/orders",
+  "2026-07-24T10:00:30 503 GET /api/users",
+  "2026-07-24T10:00:45 500 POST /api/orders",
+  "2026-07-24T10:00:59 502 GET /api/products",
+  "2026-07-24T10:01:05 200 GET /api/products",
+  "2026-07-24T10:01:10 500 GET /api/orders",
+  "2026-07-24T10:02:00 200 GET /",
+  "2026-07-24T10:02:30 404 GET /admin",
+  "this line is malformed and should be skipped",
+  "2026-07-24T10:03:00 201 POST /api/users"
+]

@@ -1,0 +1,84 @@
+[project]
+name = "python-learning"
+version = "0.1.0"
+description = "面向 Java 老手的 Python 全栈精通学习项目"
+requires-python = ">=3.11"
+# 基础依赖：只有测试框架。各章节按需在对应目录装额外依赖（fastapi/sqlalchemy/openai 等）。
+dependencies = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+]
+
+[project.optional-dependencies]
+# 各模块的可选依赖组，学到对应章节时再装。
+# 装法：pip install -e ".[web]"  /  pip install -e ".[ai]"  /  pip install -e ".[dev]"
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "pydantic-settings>=2.14.2",
+]
+ai = [
+    "anthropic>=0.40",
+    "openai>=1.40",
+    "langchain>=0.2",
+    "langchain-community>=0.2",
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+]
+devops = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "psutil>=5.9",
+    "schedule>=1.2",
+    "python-dotenv>=1.0",
+]
+dev = [
+    "mypy>=1.10",
+    "ruff>=0.4",
+]
+
+# ------------------------------------------------------------------------------
+# pytest 配置
+# ------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+# 在所有模块目录 + 全局 tests/ 下发现测试
+testpaths = [
+    "tests",
+    "01_python_core",
+    "02_stdlib",
+    "03_web_framework",
+    "04_devops_scripts",
+    "05_ai_framework",
+    "06_leetcode",
+]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+# 常用 marker，避免 warning
+markers = [
+    "slow: 标记跑得慢的测试",
+    "integration: 需要外部服务（DB/API）的集成测试",
+]
+
+# ------------------------------------------------------------------------------
+# 工具链配置（Ch01/Ch12 会用到）
+# ------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+
+[dependency-groups]
+web = [
+    "python-multipart>=0.0.32",
+]

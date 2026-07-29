@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #282a36;
+  color: #f8f8f2;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条(Dracula) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: #21222c;
+}
+*::-webkit-scrollbar-thumb {
+  background: #44475a;
+  border-radius: 6px;
+  border: 2px solid #21222c;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #6272a4;
+}
+
+/* ===== Markdown 教程排版 ===== */
+.tutorial {
+  @apply prose prose-invert max-w-none;
+  @apply prose-headings:scroll-mt-20 prose-headings:font-semibold;
+  @apply prose-h1:text-2xl prose-h1:border-b prose-h1:border-border-subtle prose-h1:pb-3 prose-h1:mb-6;
+  @apply prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:text-drac-purple;
+  @apply prose-h3:text-lg prose-h3:mt-6 prose-h3:mb-2 prose-h3:text-drac-cyan;
+  @apply prose-p:leading-7 prose-p:text-drac-fg/90;
+  @apply prose-a:text-drac-pink prose-a:no-underline hover:prose-a:underline;
+  @apply prose-strong:text-drac-fg;
+  @apply prose-code:rounded prose-code:bg-drac-line prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:text-drac-green prose-code:before:content-[""] prose-code:after:content-[""];
+  @apply prose-pre:bg-[#21222c] prose-pre:border prose-pre:border-border-subtle prose-pre:rounded-lg;
+  @apply prose-blockquote:border-l-drac-pink prose-blockquote:bg-bg-card/50 prose-blockquote:py-1 prose-blockquote:not-italic;
+  @apply prose-table:text-sm;
+  @apply prose-th:text-drac-fg prose-th:bg-bg-elev;
+  @apply prose-li:text-drac-fg/90;
+  @apply prose-strong:font-semibold;
+}
+.tutorial pre code.hljs {
+  background: transparent;
+  padding: 0;
+}
+/* hljs Dracula token 色 */
+.hljs-comment, .hljs-quote { color: #6272a4; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-name { color: #ff79c6; }
+.hljs-string, .hljs-attr, .hljs-addition, .hljs-regexp { color: #f1fa8c; }
+.hljs-number, .hljs-literal, .hljs-bullet { color: #bd93f9; }
+.hljs-title, .hljs-function .hljs-title, .hljs-section, .hljs-selector-id { color: #50fa7b; }
+.hljs-type, .hljs-class .hljs-title, .hljs-params { color: #8be9fd; }
+.hljs-variable, .hljs-template-variable { color: #ffb86c; }
+.hljs-meta { color: #8be9fd; }
+.hljs-deletion { color: #ff5555; }
+.hljs-symbol, .hljs-link { color: #ff79c6; }
+
+/* 终端区 */
+.terminal-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
