@@ -6,13 +6,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 语义 token(组件用这些,指向 Dracula 色)
-        bg: { base: "#282a36", card: "#21222c", elev: "#343746" },
-        border: { subtle: "#44475a", strong: "#6272a4" },
-        accent: { DEFAULT: "#bd93f9", muted: "#bd93f9" }, // 紫
+        // 语义 token(加深背景 + 粉色主强调,去雾用实色不用半透明)
+        bg: { base: "#191a21", card: "#21222c", elev: "#2a2c36" },
+        border: { subtle: "#44475a", strong: "#7d83a8" },
+        accent: { DEFAULT: "#ff79c6", muted: "#ff79c6" }, // 粉(主强调)
         // Dracula 原色
         drac: {
-          bg: "#282a36",
+          bg: "#191a21",
           line: "#44475a",
           fg: "#f8f8f2",
           comment: "#6272a4",

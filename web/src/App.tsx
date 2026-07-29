@@ -6,7 +6,7 @@ import ChapterPage from "./routes/ChapterPage";
 export default function App() {
   return (
     <div className="min-h-screen bg-bg-base text-zinc-200">
-      <header className="sticky top-0 z-20 border-b border-border-subtle/70 bg-bg-base/80 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-base/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="flex items-center gap-2 font-semibold text-zinc-100">
             <span className="text-accent">🐍</span>

@@ -29,7 +29,7 @@ export default function Terminal({ output, status }: { output: string; status: S
         <span className="ml-2 text-xs text-zinc-500">pytest 输出</span>
         <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${pill.cls}`}>{pill.text}</span>
       </div>
-      <pre className="terminal-output max-h-80 overflow-auto p-4 text-drac-fg/90">
+      <pre className="terminal-output max-h-80 overflow-auto p-4 text-drac-fg">
         {output || "点击「▶ 运行测试」查看结果。"}
       </pre>
     </div>
