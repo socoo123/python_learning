@@ -1,0 +1,157 @@
+{
+  "id": "ch14",
+  "num": "14",
+  "title": "FastAPI 入门:第一个 API + Pydantic 模型",
+  "runMode": "local",
+  "tutorialMd": "# Ch14 · FastAPI 入门:第一个 API + Pydantic 模型\n\n> **预计**:1 天 ｜ **前置**:Ch13 ｜ **M3 第二章**\n> **目标**:理解 FastAPI 的核心理念——「**类型注解驱动一切**」。写一个端点,类型注解就自动帮你:解析参数、校验数据、序列化 JSON、生成文档。对比 Spring Boot,样板代码少 80%。\n\n> 📐 **本教程的契约**:§14.1–§14.5 对应作业。本章建商品管理 mini app,后续章节在此基础上加功能。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `ProductCreate` 模型 | §14.2/§14.3 | Pydantic 模型 + Field 校验 |\n| `list_products` | §14.1 | 路由 + 自动序列化 |\n| `create_product` | §14.2 | 请求体模型(model_dump) |\n| `get_product` | §14.5 | 路径参数 + HTTPException |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 60-90 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n> 💡 本章开始,作业形态变了:不是填函数,而是**填 API 端点 + 模型**。测试用 TestClient 发 HTTP 请求验证。\n\n---\n\n## ① 预览猜\n\n1. Spring 写 `@GetMapping(\"/products\")` + 手动 `@RequestBody` + `@Valid` + Jackson 序列化。FastAPI 怎么用类型注解一次性搞定这些?\n2. Java DTO 用 class + Lombok。FastAPI 用什么定义「请求/响应数据结构」并自动校验?\n3. 参数校验失败(如 price=-1),Spring 返回 400,FastAPI 默认返回什么状态码?\n4. Spring 启动后看接口文档要装 Swagger。FastAPI 自带文档在哪个路径?\n5. 不启动服务怎么测自己的 API?\n\n---\n\n## §14.1 FastAPI 核心理念 + 第一个端点\n\nFastAPI 的设计哲学:**你写类型注解,框架自动干活**。\n\n```python\nfrom fastapi import FastAPI\n\napp = FastAPI(title=\"商品管理 API\")\n\n@app.get(\"/products\")\ndef list_products():\n    return list(PRODUCTS.values())\n```\n\n就这么几行,你得到了:\n- 一个 GET `/products` 端点(= Spring `@GetMapping(\"/products\")`)\n- 返回值**自动序列化成 JSON**(Product 对象 → `{\"id\":1,\"name\":...}`),不用手动 json.dumps\n- 自动生成 **OpenAPI 文档**(启动后访问 `/docs` 有 Swagger UI)\n- 启动命令:`uvicorn ch14_assignment:app --reload`(Ch22 讲部署)\n\n> 🟡 **Java 对比**:Spring 要 `@RestController` + `@GetMapping` + 返回值靠 Jackson 序列化。FastAPI 更简洁,且**类型注解参与业务**(不只是文档)。\n\n### 启动看效果(可选,非作业必需)\n\n```bash\nuv run uvicorn 03_web_framework.ch14.ch14_assignment:app --reload\n# 浏览器开 http://localhost:8000/docs 看 Swagger UI\n# http://localhost:8000/products 看商品列表\n```\n> 作业用 TestClient 测,不需要手动启动。但建议至少跑一次看 `/docs` 的自动文档,体会「类型驱动」。\n\n> ✅ 做 `list_products` 题:`return list(PRODUCTS.values())`。\n\n---\n\n## §14.2 Pydantic 模型:请求/响应数据结构(对应:`ProductCreate`、`create_product`)🔴\n\n**Pydantic `BaseModel`** = Java DTO + 自动校验 + 自动(反)序列化,三位一体。\n\n```python\nfrom pydantic import BaseModel, Field\n\nclass ProductCreate(BaseModel):\n    name: str\n    price: float = Field(gt=0, description=\"价格必须大于 0\")   # gt=0:必须 > 0\n    stock: int = 0                                              # 默认值\n```\n\n### 用在端点参数 = 请求体\n\n```python\n@app.post(\"/products\", status_code=201)\ndef create_product(p: ProductCreate):\n    # p 已经是 ProductCreate 实例,FastAPI 自动做了:\n    #   ① 解析请求 JSON body\n    #   ② 按 ProductCreate 校验(类型 + Field 约束)\n    #   ③ 校验失败自动返回 422(你不用写校验代码!)\n    return ...\n```\n\n**FastAPI 看到 `p: ProductCreate` 这个类型注解**,就自动把请求体 JSON 解析成 `ProductCreate` 实例传给你。校验失败它自动返 422。你只管用 `p.name`、`p.price`。\n\n> 🤯 **Java 老手震惊点**:Spring 要 `@RequestBody @Valid ProductCreate p` + DTO 上写 `@Positive` + 配 Bean Validation + 全局异常处理 422。FastAPI 一个类型注解全搞定。\n\n### `model_dump()`:模型转 dict(Pydantic v2)\n\n```python\np = ProductCreate(name=\"键盘\", price=599)\np.model_dump()        # {\"name\":\"键盘\", \"price\":599.0, \"stock\":0}   ← v2 方法\n# (Pydantic v1 是 p.dict(),已废弃)\n```\n\n本节作业用它把 ProductCreate 转成 dict,再 `**` 解包造 Product:\n```python\nproduct = Product(id=_next_id, **p.model_dump())\n```\n\n> ✅ 做 `ProductCreate` + `create_product`:模型加 `Field(gt=0)`;端点用 `p.model_dump()` 造 Product 存入。\n\n---\n\n## §14.3 自动校验:Field 约束\n\nPydantic 的 `Field` 给字段加约束。校验失败 FastAPI 自动返 **422 Unprocessable Entity**(不是 400):\n\n| 约束 | 含义 | 示例 |\n|------|------|------|\n| `gt=0` | 大于 0 | price 必须 > 0 |\n| `ge=0` | 大于等于 0 | |\n| `lt=100` | 小于 | |\n| `le=100` | 小于等于 | |\n| `min_length=1` | 字符串最小长度 | name 非空 |\n| `default=...` | 默认值 | stock=0 |\n\n```python\nclass ProductCreate(BaseModel):\n    name: str = Field(min_length=1)\n    price: float = Field(gt=0)\n    stock: int = 0\n```\n\n不写约束时,**类型本身就在校验**——传 `\"price\": \"abc\"` 会被拒(类型不符 → 422)。\n\n---\n\n## §14.4 自动序列化 + OpenAPI 文档\n\n返回 Pydantic 模型(或 list/dict),FastAPI **自动转 JSON**:\n```python\n@app.get(\"/products\")\ndef list_products():\n    return list(PRODUCTS.values())   # [Product, Product] → JSON 数组\n```\n\n**自动文档**:启动后 `/docs` 有 Swagger UI,`/redoc` 有 ReDoc。这些文档是根据你的**类型注解**生成的——你改模型,文档自动更新。这是 FastAPI 最爽的特性之一。\n\n> 🟡 **Java 对比**:Spring 要 springdoc/swagger 依赖 + 配置。FastAPI 内置,零配置。\n\n---\n\n## §14.5 路径参数 + HTTPException(对应:`get_product`)\n\n```python\n@app.get(\"/products/{product_id}\")     # {product_id} 是路径参数\ndef get_product(product_id: int):       # int 注解:自动把 URL 的 \"1\" 转 int,非数字返 422\n    if product_id not in PRODUCTS:\n        raise HTTPException(status_code=404, detail=\"商品不存在\")\n    return PRODUCTS[product_id]\n```\n\n**两个关键点**:\n- `{product_id}` 在路径里,同名参数自动从 URL 提取。`int` 注解做类型转换+校验。\n- `HTTPException(status_code, detail)` 抛出 HTTP 错误响应。= Spring 的 `ResponseStatusException`。\n\n> ✅ 做 `get_product` 题:判存在性,不存在 `raise HTTPException(404, ...)`,否则返回。\n\n---\n\n## §14.6 TestClient:测自己的 API\n\n不用启动服务,`TestClient` 直接对 app 发请求(基于 httpx,Ch13 学过):\n\n```python\nfrom fastapi.testclient import TestClient\nfrom ch14_assignment import app\n\nclient = TestClient(app)\n\nresp = client.get(\"/products\")\nresp.status_code       # 200\nresp.json()            # [{\"id\":1,...}, ...]\n\nresp = client.post(\"/products\", json={\"name\":\"X\",\"price\":10})   # 发 JSON body\nresp.status_code       # 201\n\nclient.post(\"/products\", json={\"name\":\"X\",\"price\":-1}).status_code   # 422(校验失败)\n```\n\n> 🟡 **Java 对比**:= Spring `MockMvc` / `WebMvcTest`。TestClient 更简洁,且能测完整 HTTP 语义。\n\n---\n\n## §14.7 速查:FastAPI 端点签名各部分\n\n```python\n@app.post(\"/products\", status_code=201, response_model=Product)   # 装饰器:方法+路径+选项\ndef create_product(                                                # 函数名任意\n    p: ProductCreate,                                              # Pydantic 类型 → 请求体\n    product_id: int,                                               # 简单类型 + 路径里有同名 → 路径参数\n    category: str = \"all\",                                         # 简单类型 + 路径里没有 → 查询参数\n):                                                                #   (Ch15 详讲)\n    return ...\n```\n\n---\n\n## §14.8 Java 老手常踩的坑 ⚠️\n\n1. **Pydantic v1 vs v2**:v2 用 `model_dump()`,v1 用 `dict()`(已废弃)。本项目是 v2。\n2. **校验失败是 422 不是 400**:FastAPI 的 Pydantic 校验失败默认 422 Unprocessable Entity。\n3. **路径参数 vs 查询参数**:同名在路径里 `{x}` → 路径参数;不在 → 查询参数(Ch15 详讲)。\n4. **`@app.post` 的 `status_code`**:默认 200,创建资源通常设 201。\n5. **改全局变量要 `global`**:`create_product` 改 `_next_id` 要 `global _next_id`(Ch01 §1.10 坑6 相关)。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `ProductCreate` 模型 | Pydantic + Field 校验 | 🟡 |\n| `list_products` | 路由 + 自动序列化 | 🟢 |\n| `create_product` | 请求体模型 + model_dump | 🟡 |\n| `get_product` | 路径参数 + HTTPException | 🟡 |\n\n```bash\nuv run pytest 03_web_framework/ch14/test_ch14_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清「FastAPI 的类型注解驱动了哪几件事」(解析/校验/序列化/文档)\n- [ ] 会定义 Pydantic 模型 + Field 约束,知道校验失败返回 422\n- [ ] 会用 TestClient 测 API\n- [ ] 4 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「FastAPI 为什么说『类型注解驱动一切』?一个 `p: ProductCreate` 注解替你做了什么?」— 重读 §14.2\n2. 「Pydantic 模型和 Java DTO 有什么不同?校验是怎么自动发生的?」— 重读 §14.2/§14.3\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh14 掌握后,进 **Ch15 · 路由参数**:路径参数 `/{id}`、查询参数 `?category=&min_price=`、分页 `?page=&size=`、`Query`/`Field` 校验——给商品 API 加上筛选和分页。\n",
+  "assignment": "\"\"\"\nCh14 作业:FastAPI 入门 + Pydantic 模型。\n\n一个商品管理 mini app:GET 列表 / POST 创建 / GET 单个。\n体会 FastAPI 的核心理念——「类型注解驱动一切」:参数自动解析、自动校验、自动序列化。\n\n    uv run pytest 03_web_framework/ch14/test_ch14_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import FastAPI, HTTPException\nfrom pydantic import BaseModel, Field\n\napp = FastAPI(title=\"商品管理 API\")\n\n\n# ---------- Pydantic 模型(= Java DTO + 自动校验)----------\n\n\nclass Product(BaseModel):\n    \"\"\"响应模型:商品完整信息。\"\"\"\n    id: int\n    name: str\n    price: float\n    stock: int = 0\n\n\n# TODO: 定义创建商品的【请求模型】ProductCreate。要求:\n#   - name: str(必填)\n#   - price: float = Field(gt=0, description=\"价格必须大于 0\")   ← gt=0 校验必须 > 0\n#   - stock: int = 0(默认 0)\nclass ProductCreate(BaseModel):\n    \"\"\"创建商品时客户端传入的字段(没有 id,服务端生成)。\"\"\"\n    ...\n\n\n# ---------- 内存存储(Ch19 才接真数据库)----------\n\nPRODUCTS: dict[int, Product] = {\n    1: Product(id=1, name=\"机械键盘\", price=599.0, stock=120),\n    2: Product(id=2, name=\"无线鼠标\", price=159.0, stock=300),\n}\n_next_id = 3\n\n\n# ---------- 端点(路由)----------\n\n\n@app.get(\"/products\")\ndef list_products():\n    \"\"\"\n    【路由 + 序列化 · §14.1】返回所有商品。\n    FastAPI 自动把 [Product, ...] 序列化成 JSON 数组。\n\n    思路:return list(PRODUCTS.values())。\n    \"\"\"\n    # TODO: 返回所有商品\n    ...\n\n\n@app.post(\"/products\", status_code=201)\ndef create_product(p: ProductCreate):\n    \"\"\"\n    【请求体模型 · §14.2/§14.3】创建商品。\n    p 的类型注解 ProductCreate 让 FastAPI【自动】:① 解析 JSON body ② 按 Pydantic 校验\n    ③ 校验失败返回 422。你只管用 p 当普通对象。\n\n    思路:\n        global _next_id                                    # 函数内改全局变量要声明\n        product = Product(id=_next_id, **p.model_dump())   # model_dump() 把 ProductCreate 转 dict\n        PRODUCTS[_next_id] = product\n        _next_id += 1\n        return product\n    \"\"\"\n    # TODO: 造 Product(分配 id)、存入、自增 _next_id、返回\n    ...\n\n\n@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【路径参数 + HTTPException · §14.5】查单个商品。\n    product_id 的 int 注解让 FastAPI 自动把 URL 里的 \"1\" 转成 int(并校验类型)。\n    不存在时 raise HTTPException(404)。\n\n    思路:\n        if product_id not in PRODUCTS:\n            raise HTTPException(status_code=404, detail=\"商品不存在\")\n        return PRODUCTS[product_id]\n    \"\"\"\n    # TODO: 不存在 raise HTTPException(404);否则返回\n    ...\n",
+  "testName": "ch14_assignment",
+  "testSource": "\"\"\"\nCh14 作业测试。运行: uv run pytest 03_web_framework/ch14/test_ch14_assignment.py -v\n\n用 FastAPI 的 TestClient(基于 httpx)测自己的 API,不用起服务。\n\"\"\"\nfrom fastapi.testclient import TestClient\n\nfrom ch14_assignment import app\n\nclient = TestClient(app)\n\n\n# ---------- list_products:GET /products ----------\nclass TestListProducts:\n    def test_returns_list(self):\n        resp = client.get(\"/products\")\n        assert resp.status_code == 200\n        data = resp.json()\n        assert isinstance(data, list)\n        assert len(data) >= 2     # 初始有 2 个\n\n    def test_has_initial_products(self):\n        names = [p[\"name\"] for p in client.get(\"/products\").json()]\n        assert \"机械键盘\" in names\n        assert \"无线鼠标\" in names\n\n    def test_product_has_fields(self):\n        first = client.get(\"/products\").json()[0]\n        assert {\"id\", \"name\", \"price\", \"stock\"} <= set(first.keys())\n\n\n# ---------- create_product:POST /products ----------\nclass TestCreateProduct:\n    def test_create_returns_201(self):\n        resp = client.post(\"/products\", json={\"name\": \"新商品\", \"price\": 100})\n        assert resp.status_code == 201\n        assert resp.json()[\"name\"] == \"新商品\"\n\n    def test_create_assigns_id(self):\n        resp = client.post(\"/products\", json={\"name\": \"X\", \"price\": 50})\n        assert \"id\" in resp.json()\n        assert isinstance(resp.json()[\"id\"], int)\n\n    def test_created_appears_in_list(self):\n        resp = client.post(\"/products\", json={\"name\": \"可查商品\", \"price\": 88})\n        new_id = resp.json()[\"id\"]\n        # 能通过 GET 单个查到\n        assert client.get(f\"/products/{new_id}\").status_code == 200\n\n    def test_invalid_price_rejected(self):\n        # price <= 0 违反 Field(gt=0),Pydantic 拒绝 → 422\n        resp = client.post(\"/products\", json={\"name\": \"X\", \"price\": -10})\n        assert resp.status_code == 422\n\n    def test_zero_price_rejected(self):\n        resp = client.post(\"/products\", json={\"name\": \"X\", \"price\": 0})\n        assert resp.status_code == 422     # gt=0 不含 0\n\n    def test_missing_name_rejected(self):\n        resp = client.post(\"/products\", json={\"price\": 10})\n        assert resp.status_code == 422     # name 必填\n\n    def test_default_stock(self):\n        resp = client.post(\"/products\", json={\"name\": \"Y\", \"price\": 10})\n        assert resp.json()[\"stock\"] == 0   # stock 默认 0\n\n\n# ---------- get_product:GET /products/{id} ----------\nclass TestGetProduct:\n    def test_get_existing(self):\n        resp = client.get(\"/products/1\")\n        assert resp.status_code == 200\n        assert resp.json()[\"name\"] == \"机械键盘\"\n\n    def test_get_missing_returns_404(self):\n        resp = client.get(\"/products/99999\")\n        assert resp.status_code == 404\n",
+  "reviewMd": "# Ch14 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | FastAPI「类型注解驱动一切」具体驱动了哪 4 件事? | ① 解析参数(路径/查询/请求体)② 校验数据 ③ 序列化响应成 JSON ④ 生成 OpenAPI 文档。一个类型注解全搞定 | ⬜ |\n| 2 | Pydantic `BaseModel` 对应 Java 什么?比它多了什么? | = Java DTO + 自动校验 + 自动(反)序列化,三位一体。比 DTO 多了校验和序列化自动化 | ⬜ |\n| 3 | Pydantic 校验失败(price=-1)返回什么状态码? | **422** Unprocessable Entity(不是 400)。FastAPI/Pydantic 的默认约定 | ⬜ |\n| 4 | `Field(gt=0)` / `ge` / `min_length` 各什么? | gt=大于,ge=大于等于,lt/le=小于/小于等于,min_length=字符串最小长度。给字段加约束,校验失败自动 422 | ⬜ |\n| 5 | Pydantic v2 模型转 dict 用什么?v1 呢? | v2 用 `model_dump()`;v1 用 `dict()`(已废弃)。本项目 v2。常配合 `**` 解包造另一模型 | ⬜ |\n| 6 | `HTTPException(status_code=404, detail=...)` 干嘛?对应 Java? | 抛 HTTP 错误响应。= Spring `ResponseStatusException`。常用于资源不存在返 404 | ⬜ |\n| 7 | 怎么不用启动服务测自己的 API?自动文档在哪? | `TestClient(app)` 直接对 app 发 HTTP 请求(基于 httpx,= Spring MockMvc)。自动文档在 `/docs`(Swagger)和 `/redoc` | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「类型注解驱动的 4 件事、Pydantic vs Java DTO」?\n- [ ] 能说清「校验失败 422、Field 约束怎么加」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:1 天 ｜ **前置**:Ch13 ｜ **M3 第二章**\n> **目标**:理解 FastAPI 的核心理念——「**类型注解驱动一切**」。写一个端点,类型注解就自动帮你:解析参数、校验数据、序列化 JSON、生成文档。对比 Spring Boot,样板代码少 80%。\n\n> 📐 **本教程的契约**:§14.1–§14.5 对应作业。本章建商品管理 mini app,后续章节在此基础上加功能。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `ProductCreate` 模型 | §14.2/§14.3 | Pydantic 模型 + Field 校验 |\n| `list_products` | §14.1 | 路由 + 自动序列化 |\n| `create_product` | §14.2 | 请求体模型(model_dump) |\n| `get_product` | §14.5 | 路径参数 + HTTPException |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-60-90-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 60-90 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n> 💡 本章开始,作业形态变了:不是填函数,而是**填 API 端点 + 模型**。测试用 TestClient 发 HTTP 请求验证。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Spring 写 `@GetMapping(\"/products\")` + 手动 `@RequestBody` + `@Valid` + Jackson 序列化。FastAPI 怎么用类型注解一次性搞定这些?\n2. Java DTO 用 class + Lombok。FastAPI 用什么定义「请求/响应数据结构」并自动校验?\n3. 参数校验失败(如 price=-1),Spring 返回 400,FastAPI 默认返回什么状态码?\n4. Spring 启动后看接口文档要装 Swagger。FastAPI 自带文档在哪个路径?\n5. 不启动服务怎么测自己的 API?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-14.1",
+      "heading": "§14.1 FastAPI 核心理念 + 第一个端点",
+      "secNum": "14.1",
+      "body": "FastAPI 的设计哲学:**你写类型注解,框架自动干活**。\n\n```python\nfrom fastapi import FastAPI\n\napp = FastAPI(title=\"商品管理 API\")\n\n@app.get(\"/products\")\ndef list_products():\n    return list(PRODUCTS.values())\n```\n\n就这么几行,你得到了:\n- 一个 GET `/products` 端点(= Spring `@GetMapping(\"/products\")`)\n- 返回值**自动序列化成 JSON**(Product 对象 → `{\"id\":1,\"name\":...}`),不用手动 json.dumps\n- 自动生成 **OpenAPI 文档**(启动后访问 `/docs` 有 Swagger UI)\n- 启动命令:`uvicorn ch14_assignment:app --reload`(Ch22 讲部署)\n\n> 🟡 **Java 对比**:Spring 要 `@RestController` + `@GetMapping` + 返回值靠 Jackson 序列化。FastAPI 更简洁,且**类型注解参与业务**(不只是文档)。\n\n### 启动看效果(可选,非作业必需)\n\n```bash\nuv run uvicorn 03_web_framework.ch14.ch14_assignment:app --reload\n# 浏览器开 http://localhost:8000/docs 看 Swagger UI\n# http://localhost:8000/products 看商品列表\n```\n> 作业用 TestClient 测,不需要手动启动。但建议至少跑一次看 `/docs` 的自动文档,体会「类型驱动」。\n\n> ✅ 做 `list_products` 题:`return list(PRODUCTS.values())`。\n\n---",
+      "exerciseFunctions": [
+        "list_products"
+      ]
+    },
+    {
+      "id": "sec-14.2",
+      "heading": "§14.2 Pydantic 模型:请求/响应数据结构(对应:`ProductCreate`、`create_product`)🔴",
+      "secNum": "14.2",
+      "body": "**Pydantic `BaseModel`** = Java DTO + 自动校验 + 自动(反)序列化,三位一体。\n\n```python\nfrom pydantic import BaseModel, Field\n\nclass ProductCreate(BaseModel):\n    name: str\n    price: float = Field(gt=0, description=\"价格必须大于 0\")   # gt=0:必须 > 0\n    stock: int = 0                                              # 默认值\n```\n\n### 用在端点参数 = 请求体\n\n```python\n@app.post(\"/products\", status_code=201)\ndef create_product(p: ProductCreate):\n    # p 已经是 ProductCreate 实例,FastAPI 自动做了:\n    #   ① 解析请求 JSON body\n    #   ② 按 ProductCreate 校验(类型 + Field 约束)\n    #   ③ 校验失败自动返回 422(你不用写校验代码!)\n    return ...\n```\n\n**FastAPI 看到 `p: ProductCreate` 这个类型注解**,就自动把请求体 JSON 解析成 `ProductCreate` 实例传给你。校验失败它自动返 422。你只管用 `p.name`、`p.price`。\n\n> 🤯 **Java 老手震惊点**:Spring 要 `@RequestBody @Valid ProductCreate p` + DTO 上写 `@Positive` + 配 Bean Validation + 全局异常处理 422。FastAPI 一个类型注解全搞定。\n\n### `model_dump()`:模型转 dict(Pydantic v2)\n\n```python\np = ProductCreate(name=\"键盘\", price=599)\np.model_dump()        # {\"name\":\"键盘\", \"price\":599.0, \"stock\":0}   ← v2 方法\n# (Pydantic v1 是 p.dict(),已废弃)\n```\n\n本节作业用它把 ProductCreate 转成 dict,再 `**` 解包造 Product:\n```python\nproduct = Product(id=_next_id, **p.model_dump())\n```\n\n> ✅ 做 `ProductCreate` + `create_product`:模型加 `Field(gt=0)`;端点用 `p.model_dump()` 造 Product 存入。\n\n---",
+      "exerciseFunctions": [
+        "create_product"
+      ]
+    },
+    {
+      "id": "sec-14.3",
+      "heading": "§14.3 自动校验:Field 约束",
+      "secNum": "14.3",
+      "body": "Pydantic 的 `Field` 给字段加约束。校验失败 FastAPI 自动返 **422 Unprocessable Entity**(不是 400):\n\n| 约束 | 含义 | 示例 |\n|------|------|------|\n| `gt=0` | 大于 0 | price 必须 > 0 |\n| `ge=0` | 大于等于 0 | |\n| `lt=100` | 小于 | |\n| `le=100` | 小于等于 | |\n| `min_length=1` | 字符串最小长度 | name 非空 |\n| `default=...` | 默认值 | stock=0 |\n\n```python\nclass ProductCreate(BaseModel):\n    name: str = Field(min_length=1)\n    price: float = Field(gt=0)\n    stock: int = 0\n```\n\n不写约束时,**类型本身就在校验**——传 `\"price\": \"abc\"` 会被拒(类型不符 → 422)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-14.4",
+      "heading": "§14.4 自动序列化 + OpenAPI 文档",
+      "secNum": "14.4",
+      "body": "返回 Pydantic 模型(或 list/dict),FastAPI **自动转 JSON**:\n```python\n@app.get(\"/products\")\ndef list_products():\n    return list(PRODUCTS.values())   # [Product, Product] → JSON 数组\n```\n\n**自动文档**:启动后 `/docs` 有 Swagger UI,`/redoc` 有 ReDoc。这些文档是根据你的**类型注解**生成的——你改模型,文档自动更新。这是 FastAPI 最爽的特性之一。\n\n> 🟡 **Java 对比**:Spring 要 springdoc/swagger 依赖 + 配置。FastAPI 内置,零配置。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-14.5",
+      "heading": "§14.5 路径参数 + HTTPException(对应:`get_product`)",
+      "secNum": "14.5",
+      "body": "```python\n@app.get(\"/products/{product_id}\")     # {product_id} 是路径参数\ndef get_product(product_id: int):       # int 注解:自动把 URL 的 \"1\" 转 int,非数字返 422\n    if product_id not in PRODUCTS:\n        raise HTTPException(status_code=404, detail=\"商品不存在\")\n    return PRODUCTS[product_id]\n```\n\n**两个关键点**:\n- `{product_id}` 在路径里,同名参数自动从 URL 提取。`int` 注解做类型转换+校验。\n- `HTTPException(status_code, detail)` 抛出 HTTP 错误响应。= Spring 的 `ResponseStatusException`。\n\n> ✅ 做 `get_product` 题:判存在性,不存在 `raise HTTPException(404, ...)`,否则返回。\n\n---",
+      "exerciseFunctions": [
+        "get_product"
+      ]
+    },
+    {
+      "id": "sec-14.6",
+      "heading": "§14.6 TestClient:测自己的 API",
+      "secNum": "14.6",
+      "body": "不用启动服务,`TestClient` 直接对 app 发请求(基于 httpx,Ch13 学过):\n\n```python\nfrom fastapi.testclient import TestClient\nfrom ch14_assignment import app\n\nclient = TestClient(app)\n\nresp = client.get(\"/products\")\nresp.status_code       # 200\nresp.json()            # [{\"id\":1,...}, ...]\n\nresp = client.post(\"/products\", json={\"name\":\"X\",\"price\":10})   # 发 JSON body\nresp.status_code       # 201\n\nclient.post(\"/products\", json={\"name\":\"X\",\"price\":-1}).status_code   # 422(校验失败)\n```\n\n> 🟡 **Java 对比**:= Spring `MockMvc` / `WebMvcTest`。TestClient 更简洁,且能测完整 HTTP 语义。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-14.7",
+      "heading": "§14.7 速查:FastAPI 端点签名各部分",
+      "secNum": "14.7",
+      "body": "```python\n@app.post(\"/products\", status_code=201, response_model=Product)   # 装饰器:方法+路径+选项\ndef create_product(                                                # 函数名任意\n    p: ProductCreate,                                              # Pydantic 类型 → 请求体\n    product_id: int,                                               # 简单类型 + 路径里有同名 → 路径参数\n    category: str = \"all\",                                         # 简单类型 + 路径里没有 → 查询参数\n):                                                                #   (Ch15 详讲)\n    return ...\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-14.8",
+      "heading": "§14.8 Java 老手常踩的坑 ⚠️",
+      "secNum": "14.8",
+      "body": "1. **Pydantic v1 vs v2**:v2 用 `model_dump()`,v1 用 `dict()`(已废弃)。本项目是 v2。\n2. **校验失败是 422 不是 400**:FastAPI 的 Pydantic 校验失败默认 422 Unprocessable Entity。\n3. **路径参数 vs 查询参数**:同名在路径里 `{x}` → 路径参数;不在 → 查询参数(Ch15 详讲)。\n4. **`@app.post` 的 `status_code`**:默认 200,创建资源通常设 201。\n5. **改全局变量要 `global`**:`create_product` 改 `_next_id` 要 `global _next_id`(Ch01 §1.10 坑6 相关)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `ProductCreate` 模型 | Pydantic + Field 校验 | 🟡 |\n| `list_products` | 路由 + 自动序列化 | 🟢 |\n| `create_product` | 请求体模型 + model_dump | 🟡 |\n| `get_product` | 路径参数 + HTTPException | 🟡 |\n\n```bash\nuv run pytest 03_web_framework/ch14/test_ch14_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清「FastAPI 的类型注解驱动了哪几件事」(解析/校验/序列化/文档)\n- [ ] 会定义 Pydantic 模型 + Field 约束,知道校验失败返回 422\n- [ ] 会用 TestClient 测 API\n- [ ] 4 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「FastAPI 为什么说『类型注解驱动一切』?一个 `p: ProductCreate` 注解替你做了什么?」— 重读 §14.2\n2. 「Pydantic 模型和 Java DTO 有什么不同?校验是怎么自动发生的?」— 重读 §14.2/§14.3",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch14 掌握后,进 **Ch15 · 路由参数**:路径参数 `/{id}`、查询参数 `?category=&min_price=`、分页 `?page=&size=`、`Query`/`Field` 校验——给商品 API 加上筛选和分页。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "list_products",
+      "testClass": "TestListProducts",
+      "skeleton": "@app.get(\"/products\")\ndef list_products():\n    \"\"\"\n    【路由 + 序列化 · §14.1】返回所有商品。\n    FastAPI 自动把 [Product, ...] 序列化成 JSON 数组。\n\n    思路:return list(PRODUCTS.values())。\n    \"\"\"\n    # TODO: 返回所有商品\n    ..."
+    },
+    {
+      "name": "create_product",
+      "testClass": "TestCreateProduct",
+      "skeleton": "@app.post(\"/products\", status_code=201)\ndef create_product(p: ProductCreate):\n    \"\"\"\n    【请求体模型 · §14.2/§14.3】创建商品。\n    p 的类型注解 ProductCreate 让 FastAPI【自动】:① 解析 JSON body ② 按 Pydantic 校验\n    ③ 校验失败返回 422。你只管用 p 当普通对象。\n\n    思路:\n        global _next_id                                    # 函数内改全局变量要声明\n        product = Product(id=_next_id, **p.model_dump())   # model_dump() 把 ProductCreate 转 dict\n        PRODUCTS[_next_id] = product\n        _next_id += 1\n        return product\n    \"\"\"\n    # TODO: 造 Product(分配 id)、存入、自增 _next_id、返回\n    ..."
+    },
+    {
+      "name": "get_product",
+      "testClass": "TestGetProduct",
+      "skeleton": "@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【路径参数 + HTTPException · §14.5】查单个商品。\n    product_id 的 int 注解让 FastAPI 自动把 URL 里的 \"1\" 转成 int(并校验类型)。\n    不存在时 raise HTTPException(404)。\n\n    思路:\n        if product_id not in PRODUCTS:\n            raise HTTPException(status_code=404, detail=\"商品不存在\")\n        return PRODUCTS[product_id]\n    \"\"\"\n    # TODO: 不存在 raise HTTPException(404);否则返回\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh14 作业:FastAPI 入门 + Pydantic 模型。\n\n一个商品管理 mini app:GET 列表 / POST 创建 / GET 单个。\n体会 FastAPI 的核心理念——「类型注解驱动一切」:参数自动解析、自动校验、自动序列化。\n\n    uv run pytest 03_web_framework/ch14/test_ch14_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import FastAPI, HTTPException\nfrom pydantic import BaseModel, Field\n\napp = FastAPI(title=\"商品管理 API\")\n\n\n# ---------- Pydantic 模型(= Java DTO + 自动校验)----------\n\n\nclass Product(BaseModel):\n    \"\"\"响应模型:商品完整信息。\"\"\"\n    id: int\n    name: str\n    price: float\n    stock: int = 0\n\n\n# TODO: 定义创建商品的【请求模型】ProductCreate。要求:\n#   - name: str(必填)\n#   - price: float = Field(gt=0, description=\"价格必须大于 0\")   ← gt=0 校验必须 > 0\n#   - stock: int = 0(默认 0)\nclass ProductCreate(BaseModel):\n    \"\"\"创建商品时客户端传入的字段(没有 id,服务端生成)。\"\"\"\n    ...\n\n\n# ---------- 内存存储(Ch19 才接真数据库)----------\n\nPRODUCTS: dict[int, Product] = {\n    1: Product(id=1, name=\"机械键盘\", price=599.0, stock=120),\n    2: Product(id=2, name=\"无线鼠标\", price=159.0, stock=300),\n}\n_next_id = 3\n\n\n# ---------- 端点(路由)----------"
+}

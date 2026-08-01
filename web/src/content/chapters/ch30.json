@@ -1,0 +1,178 @@
+{
+  "id": "ch30",
+  "num": "30",
+  "title": "LangChain 基础:LCEL",
+  "runMode": "local",
+  "tutorialMd": "# Ch30 · LangChain 基础:LCEL\n\n> **预计**:1 天 ｜ **前置**:Ch28、Ch29、Ch18(| 管道概念)｜ **M5 第 3 章**\n> **目标**:用 LangChain 的 **LCEL**(`prompt | model | parser`)把「拼 prompt → 调模型 → 解析」这条链**声明式**拼起来——像 Unix 管道。告别每次手写三步。\n\n> 📐 **本教程的契约**:§30.2–§30.6 对应作业 5 个函数。**不调真实 LLM**:model 步用 `RunnableLambda` 包个普通函数当 FakeModel。\n\n---\n\n## 🗺️ 本章地图\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `build_prompt` | §30.2 | PromptTemplate.from_template |\n| `as_runnable` | §30.3 | RunnableLambda:任意函数 → 可用 `\\|` 串的步骤 |\n| `build_chain` | §30.4 | LCEL `\\|` 管道组装(含 PromptValue→str 适配) |\n| `run_chain` | §30.5 | chain.invoke 执行 |\n| `append_turn` | §30.6 | 对话记忆原理(messages 列表) |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 60 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. Ch28/29 每次「拼 prompt → 调用 → 解析」都重复写三步,能不能像 Unix 管道 `a | b | c` 串起来?\n2. LangChain 的 LCEL 里,`\\|` 号为什么能串联组件?它背后是什么(Python 运算符重载,Ch05)?\n3. PromptTemplate 的 `invoke` 返回的是字符串吗?(剧透:不是——这会坑到你)\n4. LLM 无状态(Ch28),LangChain 怎么做「带记忆的对话」?\n5. 「Runnable」是什么抽象?为什么普通函数要先包成 RunnableLambda 才能进管道?\n\n---\n\n## §30.1 LCEL 是什么 🟡\n\n**LCEL**(LangChain Expression Language)是 LangChain 的声明式链语法。核心思想:**每个组件都是一个 `Runnable`,用 `|` 串起来**,数据从左流到右:\n\n```python\nchain = prompt | model | parser\nresult = chain.invoke({\"q\": \"你好\"})\n# 内部:prompt 渲染 → model 调用 → parser 解析 → 最终结果\n```\n\n> 🟡 **对比 Java**:像 Java 8 Stream `list.stream().map().filter().collect()`,或 Reactor `flux.map().filter()`。LCEL 是「组件级」的管道——每个 `\\|` 是一个处理阶段。背后靠 Runnable 重载 `__or__` / `__ror__`(Ch05 运算符重载)实现。\n\n**为什么用 LCEL**:\n- 声明式:一眼看出数据流。\n- 统一接口:所有组件 `invoke`/`stream`/`batch`,可替换(`RunnableLambda`↔真 ChatModel)。\n- 自带能力:流式、重试、并发、可观测(回调)。\n\n> 🔴 **本作业不调真实 LLM**:model 步用 `RunnableLambda` 包个 echo 函数。真实场景把那一步换成 `ChatAnthropic`/`ChatOpenAI`。\n\n---\n\n## §30.2 PromptTemplate:build_prompt(对应)🟢\n\nLangChain 的 prompt 是个**对象**,不是裸字符串:\n\n```python\ndef build_prompt(template):\n    return PromptTemplate.from_template(template)\n\np = build_prompt(\"回答:{q}\")\np.invoke({\"q\": \"你好\"})          # ⚠️ 返回 StringPromptValue,不是 str!\np.invoke({\"q\": \"你好\"}).to_string()   # \"回答:你好\"\np.format(q=\"你好\")               # \"回答:你好\"(.format 直接返回 str)\n```\n\n- `from_template(\"...{q}...\")`:解析 `{q}` 占位符。\n- ⚠️ **`invoke` 返回 `StringPromptValue` 对象**(不是字符串)!这是 LCEL 的统一接口(组件间传对象)。要纯文本用 `.to_string()` 或 `.format()`。\n\n> ✅ 做 `build_prompt`:`return PromptTemplate.from_template(template)`。\n\n---\n\n## §30.3 RunnableLambda:as_runnable(对应)🟡\n\n普通函数不能直接 `|` 进管道——必须包成 **Runnable**。`RunnableLambda` 把任意 `f(x)->y` 包成 Runnable 步骤:\n\n```python\ndef as_runnable(fn):\n    return RunnableLambda(fn)\n\nup = as_runnable(lambda s: s.upper())\nup.invoke(\"abc\")        # \"ABC\"\nchain = up | as_runnable(lambda s: s + \"!\")   # Runnable 之间能用 | 串\nchain.invoke(\"hi\")      # \"HI!\"\n```\n\n- 本作业用它包 **FakeModel**(返回固定/echo 文本的函数)。真实场景换成 `ChatAnthropic(model=...)`。\n- 这就是「**统一接口**」的威力:管道里任何一步都能换成真模型 / 假模型,其余不变。\n\n> ✅ 做 `as_runnable`:`return RunnableLambda(fn)`。\n\n---\n\n## §30.4 管道组装:build_chain(对应)🔴\n\n```python\ndef build_chain(prompt, model_runnable, parser):\n    # 真实 ChatModel 能直接吃 PromptValue;FakeModel 需要纯字符串,加个 to_text 适配\n    to_text = RunnableLambda(lambda v: v.to_string() if hasattr(v, \"to_string\") else str(v))\n    return prompt | to_text | model_runnable | parser\n```\n\n- 核心:`a | b | c | d` 把 Runnable 串成链,数据依次流过。\n- ⚠️ **PromptValue → str 适配**:prompt 步输出 `StringPromptValue`,真实 ChatModel 能直接吃它;但我们的 FakeModel(lambda)只会 `f\"{s}\"` 拼接,遇到 PromptValue 渲染成乱码。所以加 `to_text` 把它转成字符串。\n  - 这是「真实 vs 模拟」的差异,真实链 `prompt | ChatModel | StrOutputParser` 不需要 `to_text`(ChatModel 原生处理 PromptValue)。教程这么写是为了让 FakeModel 能跑通。\n\n> 🔴 **`|` 的本质**:Runnable 类重载了 `__or__`,`a | b` 返回一个新的 `RunnableSequence`。这是 Ch05 运算符重载的实战——让 API 像数学公式一样直观。\n\n> ✅ 做 `build_chain`:`prompt | to_text | model_runnable | parser`。\n\n---\n\n## §30.5 执行:run_chain(对应)🟢\n\n```python\ndef run_chain(chain, variables):\n    return chain.invoke(variables)\n```\n\n`chain.invoke({\"q\":\"你好\"})`:按顺序 prompt 渲染 → to_text → model → parser → 返回最终结果。一个 `invoke` 跑完整条链。\n\n> ✅ 做 `run_chain`:`return chain.invoke(variables)`。\n\n---\n\n## §30.6 对话记忆:append_turn(对应)🟡\n\nLLM 无状态(Ch28),「记忆」靠**客户端维护 messages 列表**,每轮追加、下次请求带上:\n\n```python\ndef append_turn(history, user, assistant):\n    return [*history, {\"role\":\"user\",\"content\":user}, {\"role\":\"assistant\",\"content\":assistant}]\n```\n\n- LangChain 有 `RunnableWithMessageHistory` 自动管这个(自动把历史塞进 prompt)。这里手写理解原理:记忆 = 一个不断 append 的对话列表。\n- **历史越长越贵**(token),所以有「窗口记忆」(只留最近 N 轮)、摘要记忆(把旧对话压缩成摘要)等策略。\n\n> ✅ 做 `append_turn`:`return [*history, {user}, {assistant}]`(不 mutate 入参)。\n\n---\n\n## §30.7 真实用法示例(讲透)\n\n```python\nfrom langchain_anthropic import ChatAnthropic\nfrom langchain_core.prompts import PromptTemplate\nfrom langchain_core.output_parsers import StrOutputParser\n\nprompt = PromptTemplate.from_template(\"用一句话解释:{concept}\")\nmodel = ChatAnthropic(model=\"claude-3-5-sonnet-20241022\")   # 真模型,原生吃 PromptValue\nchain = prompt | model | StrOutputParser()                  # 真·三步链,无需 to_text\n\nprint(chain.invoke({\"concept\": \"闭包\"}))\n# chain.stream({...}) 还能流式输出(打字机效果)\n```\n\n- 真模型换上去,链结构不变——**这就是统一接口的价值**。\n- `chain.stream()`、`chain.batch([...])`、重试、回调,LCEL 自带。\n\n---\n\n## §30.8 直接用 SDK 还是 LangChain?🟡\n\n工程判断(别无脑上 LangChain):\n- **简单调用**(一问一答):直接 SDK(Ch28)更轻、可控、少一层抽象。\n- **复杂流水线**(RAG、Agent、多步、流式、记忆):LangChain 省事,但抽象层多、调试难、版本变化快。\n- 趋势:很多人回归「SDK + 手写」,LangChain 适合快速搭原型。\n\n> 🟡 别「拿着锤子看啥都是钉子」。本章教你懂 LCEL,不是让你什么都用 LangChain。\n\n---\n\n## §30.9 Java 老手常踩的坑 ⚠️\n\n1. **以为 `prompt.invoke` 返回字符串**:它返回 `StringPromptValue`。要文本用 `.to_string()`/`.format()`。\n2. **FakeModel 直接吃 PromptValue**:lambda `f\"{promptvalue}\"` 渲染成乱码。真实 ChatModel 才原生处理 PromptValue。\n3. **滥用 LangChain**:简单调用也套 LangChain,徒增抽象和调试难度。SDK 能搞定就 SDK。\n4. **忘 `|` 背后是运算符重载**:理解了才不被魔法迷惑(Runnable 重载 `__or__`)。\n5. **记忆无限增长**:历史全发→token 爆炸。生产要窗口/摘要策略。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `build_prompt` | PromptTemplate | 🟢 |\n| `as_runnable` | RunnableLambda | 🟡 |\n| `build_chain` | LCEL `\\|` + PromptValue 适配 | 🔴 |\n| `run_chain` | chain.invoke | 🟢 |\n| `append_turn` | 记忆原理 | 🟡 |\n\n```bash\nuv run pytest 05_ai_framework/ch30/test_ch30_assignment.py -v\n```\n\n全绿 = 掌握 Ch30。\n\n---\n\n## ✅ 自测\n\n- [ ] 懂 LCEL `\\|` 是声明式管道,背后靠运算符重载\n- [ ] 知道 `PromptTemplate.invoke` 返回 PromptValue 不是 str\n- [ ] 会用 RunnableLambda 把普通函数包成可串的步骤\n- [ ] 能组装 `prompt | model | parser` 链并 invoke\n- [ ] 理解记忆 = 维护 messages 列表\n- [ ] 能判断何时用 SDK 何时用 LangChain\n- [ ] 5 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「LCEL 的 `\\|` 为什么能串联组件?」— 重读 §30.1/§30.4\n2. 「为什么 build_chain 里要加 to_text?真实链需要吗?」— 重读 §30.4\n3. 「什么时候该用 LangChain,什么时候直接 SDK?」— 重读 §30.8\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步:Ch31 RAG 实战\n\n会调(Ch28)、会问(Ch29)、会串(Ch30)。接下来 RAG——让 LLM 基于【你的文档】回答:文档切片 → 向量化 → 检索 top-k → 拼上下文 → 回答。这是企业落地 LLM 的头号场景。\n",
+  "assignment": "\"\"\"\nCh30 作业:LangChain 基础(LCEL)。\n\nCh28/29 每次「拼 prompt → 调模型 → 解析」很重复。LangChain 用 LCEL\n(LangChain Expression Language)把这条链像 Unix 管道一样声明式拼起来:`prompt | model | parser`。\n\n设计要点:本作业【不调真实 LLM】。\"model\" 步骤用 RunnableLambda 包一个普通函数\n(返回固定/echo 文本)充当 FakeModel。真实用法把 RunnableLambda 换成 ChatAnthropic/ChatOpenAI 即可。\n\n5 个函数。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch30/test_ch30_assignment.py -v\n\n全绿 = 你掌握了 Ch30。\n\n依赖:langchain-core(PromptTemplate / RunnableLambda / StrOutputParser 都在它里面)。\n\"\"\"\nfrom langchain_core.output_parsers import StrOutputParser\nfrom langchain_core.prompts import PromptTemplate\nfrom langchain_core.runnables import RunnableLambda\n\n\n# ========== §30.2 模板:build_prompt ==========\n\n\ndef build_prompt(template: str) -> PromptTemplate:\n    \"\"\"\n    【模板 · §30.2】把模板字符串包成 LangChain 的 PromptTemplate 对象。\n\n    示例:\n        p = build_prompt(\"回答:{q}\")\n        p.invoke({\"q\": \"你好\"})   -> \"回答:你好\"\n\n    思路:\n        return PromptTemplate.from_template(template)\n    \"\"\"\n    # TODO: PromptTemplate.from_template(template)\n    ...\n\n\n# ========== §30.3 包装成 Runnable:as_runnable ==========\n\n\ndef as_runnable(fn) -> RunnableLambda:\n    \"\"\"\n    【Runnable · §30.3】把任意普通函数 fn 包成 RunnableLambda,这样它能用 | 串进链子。\n    本作业里用它包一个 FakeModel 函数(真实场景换成 ChatModel)。\n\n    示例:\n        r = as_runnable(lambda s: s.upper())\n        r.invoke(\"abc\")   -> \"ABC\"\n\n    思路:\n        return RunnableLambda(fn)\n    \"\"\"\n    # TODO: RunnableLambda(fn)\n    ...\n\n\n# ========== §30.4 LCEL 组装:build_chain ==========\n\n\ndef build_chain(prompt: PromptTemplate, model_runnable, parser):\n    \"\"\"\n    【LCEL · §30.4】用管道 | 把 prompt → model → parser 串成一条链(返回 Runnable)。\n    这是 LCEL 的核心:声明式组合,像 Unix 管道 a | b | c。\n\n    ⚠️ 细节:prompt.invoke 返回的是 PromptValue 对象(不是 str)。真实 ChatModel 能直接\n    吃 PromptValue;但本作业的 FakeModel(RunnableLambda 包的普通函数)只会 f\"{s}\" 拼接,\n    遇到 PromptValue 会渲染成乱码。所以中间加一个 to_text 步,把 PromptValue 转成纯字符串。\n\n    示例:\n        chain = build_chain(prompt, model_runnable, StrOutputParser())\n        run_chain(chain, {\"q\":\"你好\"})  -> \"A:Q:你好\"\n\n    思路:\n        to_text = RunnableLambda(lambda v: v.to_string() if hasattr(v, \"to_string\") else str(v))\n        return prompt | to_text | model_runnable | parser\n    \"\"\"\n    # TODO: prompt | to_text(把 PromptValue 转 str) | model_runnable | parser\n    ...\n\n\n# ========== §30.5 执行:run_chain ==========\n\n\ndef run_chain(chain, variables: dict) -> str:\n    \"\"\"\n    【执行 · §30.5】把 variables 喂进链子,拿最终输出。\n    chain.invoke 会按顺序:prompt 渲染 → model 调用 → parser 解析。\n\n    示例:\n        run_chain(chain, {\"q\": \"你好\"})  -> \"回复:回答:你好\"\n\n    思路:\n        return chain.invoke(variables)\n    \"\"\"\n    # TODO: chain.invoke(variables)\n    ...\n\n\n# ========== §30.6 对话记忆:append_turn ==========\n\n\ndef append_turn(history: list[dict], user: str, assistant: str) -> list[dict]:\n    \"\"\"\n    【记忆 · §30.6】往对话历史追加一轮 user/assistant(不修改原 history)。\n    LangChain 有 RunnableWithMessageHistory 自动管记忆,这里手写理解原理:\n    记忆 = 维护一个 messages 列表,每轮追加,下次请求带上。\n\n    示例:\n        append_turn([], \"你好\", \"你好呀\")\n            -> [{\"role\":\"user\",\"content\":\"你好\"},{\"role\":\"assistant\",\"content\":\"你好呀\"}]\n\n    思路(和 Ch28 build_messages 一个道理,别 mutate 入参):\n        return [*history, {\"role\":\"user\",\"content\":user}, {\"role\":\"assistant\",\"content\":assistant}]\n    \"\"\"\n    # TODO: 返回 history 副本 + 追加 user 和 assistant 两条\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    p = build_prompt(\"Q:{q}\")\n    model = as_runnable(lambda s: f\"A:{s}\")\n    chain = build_chain(p, model, StrOutputParser())\n    print(run_chain(chain, {\"q\": \"你好\"}))\n",
+  "testName": "ch30_assignment",
+  "testSource": "\"\"\"\nCh30 作业测试。运行: uv run pytest 05_ai_framework/ch30/test_ch30_assignment.py -v\n\"\"\"\nfrom langchain_core.output_parsers import StrOutputParser\n\nfrom ch30_assignment import (\n    append_turn,\n    as_runnable,\n    build_chain,\n    build_prompt,\n    run_chain,\n)\n\n\n# ---------- build_prompt ----------\nclass TestBuildPrompt:\n    def test_invoke_to_string(self):\n        # PromptTemplate.invoke 返回 PromptValue,要 .to_string() 得到纯文本\n        p = build_prompt(\"回答:{q}\")\n        assert p.invoke({\"q\": \"你好\"}).to_string() == \"回答:你好\"\n\n    def test_format(self):\n        # .format(...) 直接返回字符串\n        assert build_prompt(\"{greeting},{name}\").format(greeting=\"Hi\", name=\"Bob\") == \"Hi,Bob\"\n\n    def test_returns_prompt_template(self):\n        from langchain_core.prompts import PromptTemplate\n\n        assert isinstance(build_prompt(\"x\"), PromptTemplate)\n\n\n# ---------- as_runnable ----------\nclass TestAsRunnable:\n    def test_invoke(self):\n        r = as_runnable(lambda s: s.upper())\n        assert r.invoke(\"abc\") == \"ABC\"\n\n    def test_returns_runnable_lambda(self):\n        from langchain_core.runnables import RunnableLambda\n\n        assert isinstance(as_runnable(lambda x: x), RunnableLambda)\n\n    def test_pipe_compose(self):\n        # RunnableLambda 之间能用 | 串\n        up = as_runnable(lambda s: s.upper())\n        exclaim = as_runnable(lambda s: s + \"!\")\n        chain = up | exclaim\n        assert chain.invoke(\"hi\") == \"HI!\"\n\n\n# ---------- build_chain + run_chain ----------\nclass TestChain:\n    def test_full_chain(self):\n        p = build_prompt(\"Q:{q}\")\n        model = as_runnable(lambda s: f\"A:{s}\")\n        chain = build_chain(p, model, StrOutputParser())\n        assert run_chain(chain, {\"q\": \"你好\"}) == \"A:Q:你好\"\n\n    def test_chain_without_parser(self):\n        p = build_prompt(\"Q:{q}\")\n        model = as_runnable(lambda s: f\"A:{s}\")\n        chain = build_chain(p, model, StrOutputParser())\n        assert \"Q:你好\" in run_chain(chain, {\"q\": \"你好\"})\n\n    def test_chain_is_runnable(self):\n        from langchain_core.runnables import Runnable\n\n        p = build_prompt(\"{q}\")\n        chain = build_chain(p, as_runnable(lambda s: s), StrOutputParser())\n        assert isinstance(chain, Runnable)\n\n    def test_model_echo(self):\n        p = build_prompt(\"{q}\")\n        model = as_runnable(lambda s: f\"<{s}>\")\n        chain = build_chain(p, model, StrOutputParser())\n        assert run_chain(chain, {\"q\": \"x\"}) == \"<x>\"\n\n    def test_multi_step_model(self):\n        # model 内部做点处理(replace)\n        p = build_prompt(\"翻译:{q}\")\n        model = as_runnable(lambda s: s.replace(\"翻译:\", \"[EN] \"))\n        chain = build_chain(p, model, StrOutputParser())\n        assert run_chain(chain, {\"q\": \"苹果\"}) == \"[EN] 苹果\"\n\n\n# ---------- append_turn ----------\nclass TestAppendTurn:\n    def test_empty(self):\n        assert append_turn([], \"你好\", \"你好呀\") == [\n            {\"role\": \"user\", \"content\": \"你好\"},\n            {\"role\": \"assistant\", \"content\": \"你好呀\"},\n        ]\n\n    def test_appends_to_history(self):\n        hist = [{\"role\": \"user\", \"content\": \"q1\"}, {\"role\": \"assistant\", \"content\": \"a1\"}]\n        result = append_turn(hist, \"q2\", \"a2\")\n        assert len(result) == 4\n        assert result[-2] == {\"role\": \"user\", \"content\": \"q2\"}\n        assert result[-1] == {\"role\": \"assistant\", \"content\": \"a2\"}\n\n    def test_does_not_mutate_input(self):\n        hist = []\n        append_turn(hist, \"u\", \"a\")\n        assert hist == []\n",
+  "reviewMd": "# Ch30 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | LCEL 是什么?`\\|` 为什么能串联? | LangChain 声明式链语法:prompt \\| model \\| parser,数据左→右流。`\\|` 靠 Runnable 重载 __or__/__ror__(运算符重载)= Java Stream/Reactor 管道 | ⬜ |\n| 2 | PromptTemplate.invoke 返回什么?要纯文本怎么办? | 返回【StringPromptValue 对象】不是 str!要文本用 .to_string() 或 .format()。这是 LCEL 统一接口(组件间传对象) | ⬜ |\n| 3 | 为什么普通函数要包成 RunnableLambda? | 只有 Runnable 才能用 `\\|` 串进管道。RunnableLambda 把任意 f(x)->y 包成 Runnable 步。统一接口让 FakeModel/真模型可互换 | ⬜ |\n| 4 | build_chain 为什么要 to_text 适配?真链需要吗? | FakeModel(lambda)只会 f\"{s}\" 拼接,遇 PromptValue 渲染乱码,所以要 to_text 转字符串。【真链不需要】——真 ChatModel 原生吃 PromptValue | ⬜ |\n| 5 | LLM 记忆怎么实现?LangChain 有什么? | 无状态→记忆=客户端维护 messages 列表每轮 append、下次带上。LangChain 有 RunnableWithMessageHistory 自动管。历史越长越贵 | ⬜ |\n| 6 | LCEL 自带哪些能力? | stream(流式)、batch、retry、回调/可观测、统一 invoke 接口。一个链声明式拿到这些 | ⬜ |\n| 7 | 直接 SDK 还是 LangChain? | 简单一问一答→SDK(轻、可控)。复杂流水线(RAG/Agent/多步/流式/记忆)→LangChain 省事但抽象多、调试难。别无脑上 | ⬜ |\n| 8 | 记忆无限增长的坑? | 历史全发→token 爆炸+超窗口。生产要窗口记忆(留最近N轮)/摘要记忆(压缩旧对话) | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「LCEL `\\|` = 运算符重载管道」?\n- [ ] 能说清「PromptValue vs str + to_text 适配」?\n- [ ] 能说清「何时 SDK 何时 LangChain」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:1 天 ｜ **前置**:Ch28、Ch29、Ch18(| 管道概念)｜ **M5 第 3 章**\n> **目标**:用 LangChain 的 **LCEL**(`prompt | model | parser`)把「拼 prompt → 调模型 → 解析」这条链**声明式**拼起来——像 Unix 管道。告别每次手写三步。\n\n> 📐 **本教程的契约**:§30.2–§30.6 对应作业 5 个函数。**不调真实 LLM**:model 步用 `RunnableLambda` 包个普通函数当 FakeModel。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `build_prompt` | §30.2 | PromptTemplate.from_template |\n| `as_runnable` | §30.3 | RunnableLambda:任意函数 → 可用 `\\|` 串的步骤 |\n| `build_chain` | §30.4 | LCEL `\\|` 管道组装(含 PromptValue→str 适配) |\n| `run_chain` | §30.5 | chain.invoke 执行 |\n| `append_turn` | §30.6 | 对话记忆原理(messages 列表) |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-60-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 60 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Ch28/29 每次「拼 prompt → 调用 → 解析」都重复写三步,能不能像 Unix 管道 `a | b | c` 串起来?\n2. LangChain 的 LCEL 里,`\\|` 号为什么能串联组件?它背后是什么(Python 运算符重载,Ch05)?\n3. PromptTemplate 的 `invoke` 返回的是字符串吗?(剧透:不是——这会坑到你)\n4. LLM 无状态(Ch28),LangChain 怎么做「带记忆的对话」?\n5. 「Runnable」是什么抽象?为什么普通函数要先包成 RunnableLambda 才能进管道?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-30.1",
+      "heading": "§30.1 LCEL 是什么 🟡",
+      "secNum": "30.1",
+      "body": "**LCEL**(LangChain Expression Language)是 LangChain 的声明式链语法。核心思想:**每个组件都是一个 `Runnable`,用 `|` 串起来**,数据从左流到右:\n\n```python\nchain = prompt | model | parser\nresult = chain.invoke({\"q\": \"你好\"})\n# 内部:prompt 渲染 → model 调用 → parser 解析 → 最终结果\n```\n\n> 🟡 **对比 Java**:像 Java 8 Stream `list.stream().map().filter().collect()`,或 Reactor `flux.map().filter()`。LCEL 是「组件级」的管道——每个 `\\|` 是一个处理阶段。背后靠 Runnable 重载 `__or__` / `__ror__`(Ch05 运算符重载)实现。\n\n**为什么用 LCEL**:\n- 声明式:一眼看出数据流。\n- 统一接口:所有组件 `invoke`/`stream`/`batch`,可替换(`RunnableLambda`↔真 ChatModel)。\n- 自带能力:流式、重试、并发、可观测(回调)。\n\n> 🔴 **本作业不调真实 LLM**:model 步用 `RunnableLambda` 包个 echo 函数。真实场景把那一步换成 `ChatAnthropic`/`ChatOpenAI`。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-30.2",
+      "heading": "§30.2 PromptTemplate:build_prompt(对应)🟢",
+      "secNum": "30.2",
+      "body": "LangChain 的 prompt 是个**对象**,不是裸字符串:\n\n```python\ndef build_prompt(template):\n    return PromptTemplate.from_template(template)\n\np = build_prompt(\"回答:{q}\")\np.invoke({\"q\": \"你好\"})          # ⚠️ 返回 StringPromptValue,不是 str!\np.invoke({\"q\": \"你好\"}).to_string()   # \"回答:你好\"\np.format(q=\"你好\")               # \"回答:你好\"(.format 直接返回 str)\n```\n\n- `from_template(\"...{q}...\")`:解析 `{q}` 占位符。\n- ⚠️ **`invoke` 返回 `StringPromptValue` 对象**(不是字符串)!这是 LCEL 的统一接口(组件间传对象)。要纯文本用 `.to_string()` 或 `.format()`。\n\n> ✅ 做 `build_prompt`:`return PromptTemplate.from_template(template)`。\n\n---",
+      "exerciseFunctions": [
+        "build_prompt"
+      ]
+    },
+    {
+      "id": "sec-30.3",
+      "heading": "§30.3 RunnableLambda:as_runnable(对应)🟡",
+      "secNum": "30.3",
+      "body": "普通函数不能直接 `|` 进管道——必须包成 **Runnable**。`RunnableLambda` 把任意 `f(x)->y` 包成 Runnable 步骤:\n\n```python\ndef as_runnable(fn):\n    return RunnableLambda(fn)\n\nup = as_runnable(lambda s: s.upper())\nup.invoke(\"abc\")        # \"ABC\"\nchain = up | as_runnable(lambda s: s + \"!\")   # Runnable 之间能用 | 串\nchain.invoke(\"hi\")      # \"HI!\"\n```\n\n- 本作业用它包 **FakeModel**(返回固定/echo 文本的函数)。真实场景换成 `ChatAnthropic(model=...)`。\n- 这就是「**统一接口**」的威力:管道里任何一步都能换成真模型 / 假模型,其余不变。\n\n> ✅ 做 `as_runnable`:`return RunnableLambda(fn)`。\n\n---",
+      "exerciseFunctions": [
+        "as_runnable"
+      ]
+    },
+    {
+      "id": "sec-30.4",
+      "heading": "§30.4 管道组装:build_chain(对应)🔴",
+      "secNum": "30.4",
+      "body": "```python\ndef build_chain(prompt, model_runnable, parser):\n    # 真实 ChatModel 能直接吃 PromptValue;FakeModel 需要纯字符串,加个 to_text 适配\n    to_text = RunnableLambda(lambda v: v.to_string() if hasattr(v, \"to_string\") else str(v))\n    return prompt | to_text | model_runnable | parser\n```\n\n- 核心:`a | b | c | d` 把 Runnable 串成链,数据依次流过。\n- ⚠️ **PromptValue → str 适配**:prompt 步输出 `StringPromptValue`,真实 ChatModel 能直接吃它;但我们的 FakeModel(lambda)只会 `f\"{s}\"` 拼接,遇到 PromptValue 渲染成乱码。所以加 `to_text` 把它转成字符串。\n  - 这是「真实 vs 模拟」的差异,真实链 `prompt | ChatModel | StrOutputParser` 不需要 `to_text`(ChatModel 原生处理 PromptValue)。教程这么写是为了让 FakeModel 能跑通。\n\n> 🔴 **`|` 的本质**:Runnable 类重载了 `__or__`,`a | b` 返回一个新的 `RunnableSequence`。这是 Ch05 运算符重载的实战——让 API 像数学公式一样直观。\n\n> ✅ 做 `build_chain`:`prompt | to_text | model_runnable | parser`。\n\n---",
+      "exerciseFunctions": [
+        "build_chain"
+      ]
+    },
+    {
+      "id": "sec-30.5",
+      "heading": "§30.5 执行:run_chain(对应)🟢",
+      "secNum": "30.5",
+      "body": "```python\ndef run_chain(chain, variables):\n    return chain.invoke(variables)\n```\n\n`chain.invoke({\"q\":\"你好\"})`:按顺序 prompt 渲染 → to_text → model → parser → 返回最终结果。一个 `invoke` 跑完整条链。\n\n> ✅ 做 `run_chain`:`return chain.invoke(variables)`。\n\n---",
+      "exerciseFunctions": [
+        "run_chain"
+      ]
+    },
+    {
+      "id": "sec-30.6",
+      "heading": "§30.6 对话记忆:append_turn(对应)🟡",
+      "secNum": "30.6",
+      "body": "LLM 无状态(Ch28),「记忆」靠**客户端维护 messages 列表**,每轮追加、下次请求带上:\n\n```python\ndef append_turn(history, user, assistant):\n    return [*history, {\"role\":\"user\",\"content\":user}, {\"role\":\"assistant\",\"content\":assistant}]\n```\n\n- LangChain 有 `RunnableWithMessageHistory` 自动管这个(自动把历史塞进 prompt)。这里手写理解原理:记忆 = 一个不断 append 的对话列表。\n- **历史越长越贵**(token),所以有「窗口记忆」(只留最近 N 轮)、摘要记忆(把旧对话压缩成摘要)等策略。\n\n> ✅ 做 `append_turn`:`return [*history, {user}, {assistant}]`(不 mutate 入参)。\n\n---",
+      "exerciseFunctions": [
+        "append_turn"
+      ]
+    },
+    {
+      "id": "sec-30.7",
+      "heading": "§30.7 真实用法示例(讲透)",
+      "secNum": "30.7",
+      "body": "```python\nfrom langchain_anthropic import ChatAnthropic\nfrom langchain_core.prompts import PromptTemplate\nfrom langchain_core.output_parsers import StrOutputParser\n\nprompt = PromptTemplate.from_template(\"用一句话解释:{concept}\")\nmodel = ChatAnthropic(model=\"claude-3-5-sonnet-20241022\")   # 真模型,原生吃 PromptValue\nchain = prompt | model | StrOutputParser()                  # 真·三步链,无需 to_text\n\nprint(chain.invoke({\"concept\": \"闭包\"}))\n# chain.stream({...}) 还能流式输出(打字机效果)\n```\n\n- 真模型换上去,链结构不变——**这就是统一接口的价值**。\n- `chain.stream()`、`chain.batch([...])`、重试、回调,LCEL 自带。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-30.8",
+      "heading": "§30.8 直接用 SDK 还是 LangChain?🟡",
+      "secNum": "30.8",
+      "body": "工程判断(别无脑上 LangChain):\n- **简单调用**(一问一答):直接 SDK(Ch28)更轻、可控、少一层抽象。\n- **复杂流水线**(RAG、Agent、多步、流式、记忆):LangChain 省事,但抽象层多、调试难、版本变化快。\n- 趋势:很多人回归「SDK + 手写」,LangChain 适合快速搭原型。\n\n> 🟡 别「拿着锤子看啥都是钉子」。本章教你懂 LCEL,不是让你什么都用 LangChain。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-30.9",
+      "heading": "§30.9 Java 老手常踩的坑 ⚠️",
+      "secNum": "30.9",
+      "body": "1. **以为 `prompt.invoke` 返回字符串**:它返回 `StringPromptValue`。要文本用 `.to_string()`/`.format()`。\n2. **FakeModel 直接吃 PromptValue**:lambda `f\"{promptvalue}\"` 渲染成乱码。真实 ChatModel 才原生处理 PromptValue。\n3. **滥用 LangChain**:简单调用也套 LangChain,徒增抽象和调试难度。SDK 能搞定就 SDK。\n4. **忘 `|` 背后是运算符重载**:理解了才不被魔法迷惑(Runnable 重载 `__or__`)。\n5. **记忆无限增长**:历史全发→token 爆炸。生产要窗口/摘要策略。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `build_prompt` | PromptTemplate | 🟢 |\n| `as_runnable` | RunnableLambda | 🟡 |\n| `build_chain` | LCEL `\\|` + PromptValue 适配 | 🔴 |\n| `run_chain` | chain.invoke | 🟢 |\n| `append_turn` | 记忆原理 | 🟡 |\n\n```bash\nuv run pytest 05_ai_framework/ch30/test_ch30_assignment.py -v\n```\n\n全绿 = 掌握 Ch30。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 懂 LCEL `\\|` 是声明式管道,背后靠运算符重载\n- [ ] 知道 `PromptTemplate.invoke` 返回 PromptValue 不是 str\n- [ ] 会用 RunnableLambda 把普通函数包成可串的步骤\n- [ ] 能组装 `prompt | model | parser` 链并 invoke\n- [ ] 理解记忆 = 维护 messages 列表\n- [ ] 能判断何时用 SDK 何时用 LangChain\n- [ ] 5 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「LCEL 的 `\\|` 为什么能串联组件?」— 重读 §30.1/§30.4\n2. 「为什么 build_chain 里要加 to_text?真实链需要吗?」— 重读 §30.4\n3. 「什么时候该用 LangChain,什么时候直接 SDK?」— 重读 §30.8",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步-Ch31-RAG-实战",
+      "heading": "⏭️ 下一步:Ch31 RAG 实战",
+      "secNum": null,
+      "body": "会调(Ch28)、会问(Ch29)、会串(Ch30)。接下来 RAG——让 LLM 基于【你的文档】回答:文档切片 → 向量化 → 检索 top-k → 拼上下文 → 回答。这是企业落地 LLM 的头号场景。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "build_prompt",
+      "testClass": "TestBuildPrompt",
+      "skeleton": "def build_prompt(template: str) -> PromptTemplate:\n    \"\"\"\n    【模板 · §30.2】把模板字符串包成 LangChain 的 PromptTemplate 对象。\n\n    示例:\n        p = build_prompt(\"回答:{q}\")\n        p.invoke({\"q\": \"你好\"})   -> \"回答:你好\"\n\n    思路:\n        return PromptTemplate.from_template(template)\n    \"\"\"\n    # TODO: PromptTemplate.from_template(template)\n    ..."
+    },
+    {
+      "name": "as_runnable",
+      "testClass": "TestAsRunnable",
+      "skeleton": "def as_runnable(fn) -> RunnableLambda:\n    \"\"\"\n    【Runnable · §30.3】把任意普通函数 fn 包成 RunnableLambda,这样它能用 | 串进链子。\n    本作业里用它包一个 FakeModel 函数(真实场景换成 ChatModel)。\n\n    示例:\n        r = as_runnable(lambda s: s.upper())\n        r.invoke(\"abc\")   -> \"ABC\"\n\n    思路:\n        return RunnableLambda(fn)\n    \"\"\"\n    # TODO: RunnableLambda(fn)\n    ..."
+    },
+    {
+      "name": "build_chain",
+      "testClass": "TestBuildChain",
+      "skeleton": "def build_chain(prompt: PromptTemplate, model_runnable, parser):\n    \"\"\"\n    【LCEL · §30.4】用管道 | 把 prompt → model → parser 串成一条链(返回 Runnable)。\n    这是 LCEL 的核心:声明式组合,像 Unix 管道 a | b | c。\n\n    ⚠️ 细节:prompt.invoke 返回的是 PromptValue 对象(不是 str)。真实 ChatModel 能直接\n    吃 PromptValue;但本作业的 FakeModel(RunnableLambda 包的普通函数)只会 f\"{s}\" 拼接,\n    遇到 PromptValue 会渲染成乱码。所以中间加一个 to_text 步,把 PromptValue 转成纯字符串。\n\n    示例:\n        chain = build_chain(prompt, model_runnable, StrOutputParser())\n        run_chain(chain, {\"q\":\"你好\"})  -> \"A:Q:你好\"\n\n    思路:\n        to_text = RunnableLambda(lambda v: v.to_string() if hasattr(v, \"to_string\") else str(v))\n        return prompt | to_text | model_runnable | parser\n    \"\"\"\n    # TODO: prompt | to_text(把 PromptValue 转 str) | model_runnable | parser\n    ..."
+    },
+    {
+      "name": "run_chain",
+      "testClass": "TestRunChain",
+      "skeleton": "def run_chain(chain, variables: dict) -> str:\n    \"\"\"\n    【执行 · §30.5】把 variables 喂进链子,拿最终输出。\n    chain.invoke 会按顺序:prompt 渲染 → model 调用 → parser 解析。\n\n    示例:\n        run_chain(chain, {\"q\": \"你好\"})  -> \"回复:回答:你好\"\n\n    思路:\n        return chain.invoke(variables)\n    \"\"\"\n    # TODO: chain.invoke(variables)\n    ..."
+    },
+    {
+      "name": "append_turn",
+      "testClass": "TestAppendTurn",
+      "skeleton": "def append_turn(history: list[dict], user: str, assistant: str) -> list[dict]:\n    \"\"\"\n    【记忆 · §30.6】往对话历史追加一轮 user/assistant(不修改原 history)。\n    LangChain 有 RunnableWithMessageHistory 自动管记忆,这里手写理解原理:\n    记忆 = 维护一个 messages 列表,每轮追加,下次请求带上。\n\n    示例:\n        append_turn([], \"你好\", \"你好呀\")\n            -> [{\"role\":\"user\",\"content\":\"你好\"},{\"role\":\"assistant\",\"content\":\"你好呀\"}]\n\n    思路(和 Ch28 build_messages 一个道理,别 mutate 入参):\n        return [*history, {\"role\":\"user\",\"content\":user}, {\"role\":\"assistant\",\"content\":assistant}]\n    \"\"\"\n    # TODO: 返回 history 副本 + 追加 user 和 assistant 两条\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh30 作业:LangChain 基础(LCEL)。\n\nCh28/29 每次「拼 prompt → 调模型 → 解析」很重复。LangChain 用 LCEL\n(LangChain Expression Language)把这条链像 Unix 管道一样声明式拼起来:`prompt | model | parser`。\n\n设计要点:本作业【不调真实 LLM】。\"model\" 步骤用 RunnableLambda 包一个普通函数\n(返回固定/echo 文本)充当 FakeModel。真实用法把 RunnableLambda 换成 ChatAnthropic/ChatOpenAI 即可。\n\n5 个函数。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch30/test_ch30_assignment.py -v\n\n全绿 = 你掌握了 Ch30。\n\n依赖:langchain-core(PromptTemplate / RunnableLambda / StrOutputParser 都在它里面)。\n\"\"\"\nfrom langchain_core.output_parsers import StrOutputParser\nfrom langchain_core.prompts import PromptTemplate\nfrom langchain_core.runnables import RunnableLambda\n\n\n# ========== §30.2 模板:build_prompt ==========\n\n\n# ========== §30.3 包装成 Runnable:as_runnable ==========\n\n\n# ========== §30.4 LCEL 组装:build_chain ==========\n\n\n# ========== §30.5 执行:run_chain ==========\n\n\n# ========== §30.6 对话记忆:append_turn ==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    p = build_prompt(\"Q:{q}\")\n    model = as_runnable(lambda s: f\"A:{s}\")\n    chain = build_chain(p, model, StrOutputParser())\n    print(run_chain(chain, {\"q\": \"你好\"}))"
+}

@@ -1,0 +1,143 @@
+{
+  "id": "ch13",
+  "num": "13",
+  "title": "HTTP 客户端:httpx 调用 API",
+  "runMode": "local",
+  "tutorialMd": "# Ch13 · HTTP 客户端:httpx 调用 API\n\n> **预计**:0.5 天 ｜ **前置**:M1 ｜ **M3 第一章**\n> **目标**:先学「**调**」API,再学「写」API。掌握 `httpx` 发 GET/POST、处理状态码、超时——这是后面 Ch14+ 写 FastAPI 时「测试自己 API」和「调用外部服务」的基础。\n\n> 📐 **本教程的契约**:§13.1–§13.3 对应作业。§13.5 的 MockTransport 是测试关键技巧。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `fetch_products` | §13.1 | GET + raise_for_status |\n| `create_product` | §13.2 | POST + json body |\n| `get_product_or_none` | §13.3 | 状态码处理(404) |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. Java 调 HTTP 你用过什么(HttpClient/OkHttp/RestTemplate)?Python 主流的现代库叫什么?\n2. Java 检查状态码要 `if (resp.statusCode() >= 400)`。httpx 一个方法叫什么,直接抛异常?\n3. POST 发 JSON body,httpx 哪个参数自动序列化?\n4. 不想为测试起一个真服务,httpx 提供了什么来「拦截请求返回假响应」?\n\n---\n\n## §13.1 为什么 httpx + 基础 GET\n\nPython 老牌 HTTP 库是 `requests`(同步),现代首选是 **`httpx`**:API 几乎和 requests 一样,但**同步+异步都支持**(Ch18 异步会用到),还能用 `MockTransport` 做测试。本课程统一用 httpx。\n\n> 🟡 **Java 对比**:httpx ≈ OkHttp / Spring `RestTemplate` / `WebClient`。requests ≈ 老的 Apache HttpClient。\n\n### 最简 GET\n\n```python\nimport httpx\n\nresp = httpx.get(\"https://api.example.com/products\")\nresp.status_code      # 200\nresp.json()           # 解析 JSON 响应体 → Python 对象\nresp.text             # 原始文本\nresp.headers          # 响应头\n```\n\n### `raise_for_status`:状态码自动抛异常\n\n```python\nresp = httpx.get(url)\nresp.raise_for_status()    # 4xx/5xx 直接抛 HTTPStatusError,2xx/3xx 放行\n```\n\n> 🤯 这是 Java 老手会爱的:httpx 不像某些库默认静默吞错误,`raise_for_status` 让「请求失败」明确成异常。**生产代码几乎总要调它**,否则 404/500 会被当成「正常响应」继续处理。\n\n> ✅ 做 `fetch_products` 题:`client.get(url)` + `raise_for_status()` + `resp.json()`。\n\n---\n\n## §13.2 POST + json body(对应:`create_product`)\n\n```python\n# POST 发 JSON\nresp = httpx.post(url, json={\"name\": \"键盘\", \"price\": 599})\n#                       ↑ json= 自动:① 序列化 dict→JSON ② 设 Content-Type: application/json\n\n# 其他参数\nhttpx.get(url, params={\"category\": \"book\", \"page\": 1})   # 查询参数 ?category=book&page=1\nhttpx.post(url, json=data, headers={\"Authorization\": \"Bearer xxx\"})   # 请求头\n```\n\n> 🟡 **Java 对比**:`json=` 参数 = OkHttp 的 `RequestBody.create(json, JSON_MEDIA_TYPE)`,但 httpx 一个参数搞定,不用手动序列化 + 设 Content-Type。\n\n> ✅ 做 `create_product` 题:`client.post(url, json=product)` + `raise_for_status` + `resp.json()`。\n\n---\n\n## §13.3 状态码处理:404 特殊对待(对应:`get_product_or_none`)\n\n`raise_for_status` 对所有 4xx/5xx 一视同仁(都抛)。但有时你想**特殊处理某个状态码**(如 404 返回 None,其他错误才抛):\n\n```python\nresp = client.get(url)\nif resp.status_code == 404:      # 单独放行 404(资源不存在是「正常业务结果」)\n    return None\nresp.raise_for_status()           # 其余错误(500 等)才抛\nreturn resp.json()\n```\n\n> 这是 REST 客户端的常见模式:「查单个资源,不存在不算错,返回 None;服务端真出错才抛」。\n\n> ✅ 做 `get_product_or_none` 题:见上。\n\n---\n\n## §13.4 Client / 超时 / 连接复用(了解)\n\n每次 `httpx.get(url)` 都新建连接(慢)。多次请求用 `httpx.Client` **复用连接**(连接池):\n\n```python\nwith httpx.Client(base_url=\"http://localhost:8000\", timeout=5.0) as client:\n    # base_url 让后续用相对路径\n    client.get(\"/api/products\")          # 实际 http://localhost:8000/api/products\n    client.get(\"/api/orders\")\n# with 退出自动关连接池\n```\n\n**超时**:`timeout=5.0`(秒)。不设超时是生产大忌——网络挂起会让请求永远卡住。\n\n> 本节作业接收 `client` 参数,就是为了让外部决定 client 配置(base_url/超时/连接池),函数只关心业务。\n\n---\n\n## §13.5 测试神器:MockTransport 🔴\n\n**问题**:测 `fetch_products` 总不能真起一个服务器。怎么测?\n\n**答案**:`httpx.MockTransport` 拦截请求,返回你预设的假响应。**不用真服务**。\n\n```python\nimport httpx\n\ndef handler(request):                       # handler 决定怎么响应\n    # request.url / request.method / request.read()(请求体)都可读\n    return httpx.Response(200, json=[{\"name\": \"键盘\"}])\n\ntransport = httpx.MockTransport(handler)\nclient = httpx.Client(transport=transport)  # 这个 client 的请求被 handler 接管\n\nfetch_products(client, \"http://x/api\")      # 拿到假响应 [{\"name\":\"键盘\"}]\n```\n\n`handler` 是个函数,接收 `request`,返回 `httpx.Response(状态码, json=...)`。你可以:\n- 按状态码返回不同响应(200/404/500)\n- 读取请求验证(`request.read()` 拿 body,`request.url` 拿 URL)\n\n> 🟡 **Java 对比**:= MockWebServer / WireMock / Spring `MockRestServiceServer`。httpx 的 MockTransport 内置,无需三方库。本课程 M3 所有「调用 HTTP」的测试都用它。\n\n测试文件里的 `make_client(handler)` 就是这个套路,看一眼就懂。\n\n---\n\n## §13.6 Java 老手常踩的坑 ⚠️\n\n1. **忘 `raise_for_status`**:不调它,404/500 会被当正常响应,bug 难查。生产代码总要调。\n2. **POST 忘 `json=`**:用 `data=` 发的是表单,`json=` 才是 JSON body。调 API 几乎都用 `json=`。\n3. **不设超时**:生产大忌。网络挂起 → 请求永远卡住 → 线程耗尽。永远 `timeout=`。\n4. **每次新建连接**:循环里 `httpx.get()` 性能差。用 `httpx.Client` 复用。\n5. **测试起真服务**:别为测试起 server。用 MockTransport。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `fetch_products` | GET + raise_for_status | 🟢 |\n| `create_product` | POST + json | 🟢 |\n| `get_product_or_none` | 404 处理 | 🟡 |\n\n```bash\nuv run pytest 03_web_framework/ch13/test_ch13_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能用 httpx 发 GET/POST,知道 `json=` 和 `params=` 的区别\n- [ ] 知道 `raise_for_status` 的作用,为什么生产必须调\n- [ ] 会用 MockTransport 写不依赖真服务的测试\n- [ ] 3 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「为什么 `raise_for_status` 几乎总要调?不调会怎样?」— 重读 §13.1\n2. 「MockTransport 怎么让我们不用真服务就能测 HTTP 调用?」— 重读 §13.5\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh13 掌握「调」API 后,进 **Ch14 · FastAPI 入门**——开始「**写**」API。定义 Pydantic 模型、写第一个 `@app.get`/`@app.post`,用 TestClient 测自己的 API。\n",
+  "assignment": "\"\"\"\nCh13 作业:HTTP 客户端 httpx —— 调用 API。\n\n3 个函数演示「调」REST API 的常见模式:GET 列表 / POST 创建 / GET 单个(处理 404)。\n每个函数接收一个 httpx.Client 参数(依赖注入:实战传 httpx.Client(),测试传带\nMockTransport 的 client,无需真服务)。\n\n    uv run pytest 03_web_framework/ch13/test_ch13_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport httpx\n\n\n# ========== §13.1 GET + raise_for_status ==========\n\n\ndef fetch_products(client: httpx.Client, url: str):\n    \"\"\"\n    【GET · §13.1】GET 商品列表,返回解析后的 JSON。【非 2xx 抛异常】。\n\n    示例:\n        fetch_products(client, \"http://localhost:8000/api/products\")\n            -> [{\"name\":\"键盘\"}, ...]\n\n    思路:\n        resp = client.get(url)\n        resp.raise_for_status()    # 4xx/5xx 抛 HTTPStatusError(不自己判 status_code)\n        return resp.json()\n    \"\"\"\n    # TODO: get + raise_for_status + json\n    ...\n\n\n# ========== §13.2 POST + json body ==========\n\n\ndef create_product(client: httpx.Client, url: str, product: dict) -> dict:\n    \"\"\"\n    【POST · §13.2】POST 创建商品(json body),返回服务端响应(通常含生成的 id)。\n\n    示例:\n        create_product(client, \"/api/products\", {\"name\":\"键盘\",\"price\":599})\n            -> {\"id\":1, \"name\":\"键盘\", \"price\":599}\n\n    思路:client.post(url, json=product) —— json= 参数自动序列化 + 设 Content-Type。\n         再 raise_for_status + resp.json()。\n    \"\"\"\n    # TODO: post(url, json=...) + raise_for_status + json\n    ...\n\n\n# ========== §13.3 处理 404 ==========\n\n\ndef get_product_or_none(client: httpx.Client, url: str):\n    \"\"\"\n    【状态码处理 · §13.3】GET 单个商品;【404 返回 None】,其他错误(500 等)抛异常。\n\n    示例:\n        get_product_or_none(client, \"/api/products/999\")  -> None(不存在)\n        get_product_or_none(client, \"/api/products/1\")    -> {\"id\":1,...}\n\n    思路:\n        resp = client.get(url)\n        if resp.status_code == 404:     # 单独放行 404\n            return None\n        resp.raise_for_status()          # 其他错误抛\n        return resp.json()\n    \"\"\"\n    # TODO: get + 判 404 返回 None + raise_for_status + json\n    ...\n\n\n# ---------------------------------------------------------------------\n# 实战中这样用(真服务):\n#     with httpx.Client(base_url=\"http://localhost:8000\", timeout=5.0) as client:\n#         products = fetch_products(client, \"/api/products\")\n# 测试用 MockTransport 模拟响应(见 test_ch13_assignment.py / tutorial §13.5)\n# ---------------------------------------------------------------------\n",
+  "testName": "ch13_assignment",
+  "testSource": "\"\"\"\nCh13 作业测试。运行: uv run pytest 03_web_framework/ch13/test_ch13_assignment.py -v\n\n测试技巧:用 httpx.MockTransport 注入假响应,不需要真服务。\n\"\"\"\nimport httpx\nimport pytest\n\nfrom ch13_assignment import fetch_products, create_product, get_product_or_none\n\n\ndef make_client(handler):\n    \"\"\"构造带 MockTransport 的 client:handler 决定如何响应每个请求。\"\"\"\n    return httpx.Client(transport=httpx.MockTransport(handler))\n\n\n# ---------- fetch_products:GET ----------\nclass TestFetchProducts:\n    def test_ok(self):\n        def handler(req):\n            return httpx.Response(200, json=[{\"name\": \"键盘\"}, {\"name\": \"鼠标\"}])\n        result = fetch_products(make_client(handler), \"http://x/api/products\")\n        assert result == [{\"name\": \"键盘\"}, {\"name\": \"鼠标\"}]\n\n    def test_500_raises(self):\n        def handler(req):\n            return httpx.Response(500)\n        with pytest.raises(httpx.HTTPStatusError):\n            fetch_products(make_client(handler), \"http://x/api/products\")\n\n    def test_send_correct_url(self):\n        seen = {}\n\n        def handler(req):\n            seen[\"url\"] = str(req.url)\n            return httpx.Response(200, json=[])\n        fetch_products(make_client(handler), \"http://x/api/products\")\n        assert seen[\"url\"] == \"http://x/api/products\"\n\n\n# ---------- create_product:POST ----------\nclass TestCreateProduct:\n    def test_ok_returns_response(self):\n        def handler(req):\n            return httpx.Response(201, json={\"id\": 1, \"name\": \"键盘\"})\n        result = create_product(make_client(handler), \"http://x/api/products\", {\"name\": \"键盘\"})\n        assert result == {\"id\": 1, \"name\": \"键盘\"}\n\n    def test_sends_json_body(self):\n        captured = {}\n\n        def handler(req):\n            captured[\"body\"] = req.read()\n            captured[\"content_type\"] = req.headers.get(\"content-type\")\n            return httpx.Response(201, json={})\n        create_product(make_client(handler), \"http://x/api/products\", {\"name\": \"键盘\", \"price\": 599})\n        assert b'\"name\"' in captured[\"body\"]\n        assert b'599' in captured[\"body\"]\n        assert \"application/json\" in captured[\"content_type\"]\n\n    def test_400_raises(self):\n        def handler(req):\n            return httpx.Response(400)\n        with pytest.raises(httpx.HTTPStatusError):\n            create_product(make_client(handler), \"http://x/api/products\", {})\n\n\n# ---------- get_product_or_none:GET + 404 处理 ----------\nclass TestGetProductOrNone:\n    def test_ok(self):\n        def handler(req):\n            return httpx.Response(200, json={\"id\": 1, \"name\": \"键盘\"})\n        assert get_product_or_none(make_client(handler), \"http://x/api/products/1\") == {\n            \"id\": 1, \"name\": \"键盘\",\n        }\n\n    def test_404_returns_none(self):\n        def handler(req):\n            return httpx.Response(404)\n        assert get_product_or_none(make_client(handler), \"http://x/api/products/999\") is None\n\n    def test_500_raises(self):\n        def handler(req):\n            return httpx.Response(500)\n        with pytest.raises(httpx.HTTPStatusError):\n            get_product_or_none(make_client(handler), \"http://x/api/products/1\")\n",
+  "reviewMd": "# Ch13 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | httpx 和 requests 的关系?为什么选 httpx? | API 几乎一样,但 httpx **同步+异步都支持**(Ch18 用),且内置 MockTransport 测。requests 只同步。= Java OkHttp | ⬜ |\n| 2 | `raise_for_status()` 干嘛?为什么生产几乎总要调? | 4xx/5xx 自动抛 HTTPStatusError。不调的话 404/500 会被当正常响应继续处理,bug 难查 | ⬜ |\n| 3 | POST 发 JSON body 用哪个参数?和 `params=` 区别? | `json=dict` 自动序列化+设 Content-Type。`params=` 是【查询参数】(?key=val),`data=` 是表单。调 API 用 json= | ⬜ |\n| 4 | 怎么特殊处理 404(返回 None),其他错误才抛? | 先判 `resp.status_code == 404: return None`,再 `raise_for_status()`。因为 raise_for_status 对所有 4xx 一视同仁 | ⬜ |\n| 5 | MockTransport 干嘛?为什么测试用它? | 拦截 httpx 请求,返回预设假响应,**不用真服务**。handler 函数按 request 返回 Response。= Java MockWebServer/WireMock | ⬜ |\n| 6 | httpx.Client(连接池)和超时怎么用? | `with httpx.Client(base_url=..., timeout=5.0) as client` 复用连接 + 设超时。不设超时是生产大忌(网络挂起→永久卡住) | ⬜ |\n| 7 | 拿响应体 JSON / 状态码 / 请求体 分别怎么写? | `resp.json()` 响应JSON;`resp.status_code` 状态码;handler 里 `request.read()` 读请求体 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「raise_for_status 为何必须调、不调的后果」?\n- [ ] 能说清「MockTransport 如何让测试不依赖真服务」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:M1 ｜ **M3 第一章**\n> **目标**:先学「**调**」API,再学「写」API。掌握 `httpx` 发 GET/POST、处理状态码、超时——这是后面 Ch14+ 写 FastAPI 时「测试自己 API」和「调用外部服务」的基础。\n\n> 📐 **本教程的契约**:§13.1–§13.3 对应作业。§13.5 的 MockTransport 是测试关键技巧。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `fetch_products` | §13.1 | GET + raise_for_status |\n| `create_product` | §13.2 | POST + json body |\n| `get_product_or_none` | §13.3 | 状态码处理(404) |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Java 调 HTTP 你用过什么(HttpClient/OkHttp/RestTemplate)?Python 主流的现代库叫什么?\n2. Java 检查状态码要 `if (resp.statusCode() >= 400)`。httpx 一个方法叫什么,直接抛异常?\n3. POST 发 JSON body,httpx 哪个参数自动序列化?\n4. 不想为测试起一个真服务,httpx 提供了什么来「拦截请求返回假响应」?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-13.1",
+      "heading": "§13.1 为什么 httpx + 基础 GET",
+      "secNum": "13.1",
+      "body": "Python 老牌 HTTP 库是 `requests`(同步),现代首选是 **`httpx`**:API 几乎和 requests 一样,但**同步+异步都支持**(Ch18 异步会用到),还能用 `MockTransport` 做测试。本课程统一用 httpx。\n\n> 🟡 **Java 对比**:httpx ≈ OkHttp / Spring `RestTemplate` / `WebClient`。requests ≈ 老的 Apache HttpClient。\n\n### 最简 GET\n\n```python\nimport httpx\n\nresp = httpx.get(\"https://api.example.com/products\")\nresp.status_code      # 200\nresp.json()           # 解析 JSON 响应体 → Python 对象\nresp.text             # 原始文本\nresp.headers          # 响应头\n```\n\n### `raise_for_status`:状态码自动抛异常\n\n```python\nresp = httpx.get(url)\nresp.raise_for_status()    # 4xx/5xx 直接抛 HTTPStatusError,2xx/3xx 放行\n```\n\n> 🤯 这是 Java 老手会爱的:httpx 不像某些库默认静默吞错误,`raise_for_status` 让「请求失败」明确成异常。**生产代码几乎总要调它**,否则 404/500 会被当成「正常响应」继续处理。\n\n> ✅ 做 `fetch_products` 题:`client.get(url)` + `raise_for_status()` + `resp.json()`。\n\n---",
+      "exerciseFunctions": [
+        "fetch_products"
+      ]
+    },
+    {
+      "id": "sec-13.2",
+      "heading": "§13.2 POST + json body(对应:`create_product`)",
+      "secNum": "13.2",
+      "body": "```python\n# POST 发 JSON\nresp = httpx.post(url, json={\"name\": \"键盘\", \"price\": 599})\n#                       ↑ json= 自动:① 序列化 dict→JSON ② 设 Content-Type: application/json\n\n# 其他参数\nhttpx.get(url, params={\"category\": \"book\", \"page\": 1})   # 查询参数 ?category=book&page=1\nhttpx.post(url, json=data, headers={\"Authorization\": \"Bearer xxx\"})   # 请求头\n```\n\n> 🟡 **Java 对比**:`json=` 参数 = OkHttp 的 `RequestBody.create(json, JSON_MEDIA_TYPE)`,但 httpx 一个参数搞定,不用手动序列化 + 设 Content-Type。\n\n> ✅ 做 `create_product` 题:`client.post(url, json=product)` + `raise_for_status` + `resp.json()`。\n\n---",
+      "exerciseFunctions": [
+        "create_product"
+      ]
+    },
+    {
+      "id": "sec-13.3",
+      "heading": "§13.3 状态码处理:404 特殊对待(对应:`get_product_or_none`)",
+      "secNum": "13.3",
+      "body": "`raise_for_status` 对所有 4xx/5xx 一视同仁(都抛)。但有时你想**特殊处理某个状态码**(如 404 返回 None,其他错误才抛):\n\n```python\nresp = client.get(url)\nif resp.status_code == 404:      # 单独放行 404(资源不存在是「正常业务结果」)\n    return None\nresp.raise_for_status()           # 其余错误(500 等)才抛\nreturn resp.json()\n```\n\n> 这是 REST 客户端的常见模式:「查单个资源,不存在不算错,返回 None;服务端真出错才抛」。\n\n> ✅ 做 `get_product_or_none` 题:见上。\n\n---",
+      "exerciseFunctions": [
+        "get_product_or_none"
+      ]
+    },
+    {
+      "id": "sec-13.4",
+      "heading": "§13.4 Client / 超时 / 连接复用(了解)",
+      "secNum": "13.4",
+      "body": "每次 `httpx.get(url)` 都新建连接(慢)。多次请求用 `httpx.Client` **复用连接**(连接池):\n\n```python\nwith httpx.Client(base_url=\"http://localhost:8000\", timeout=5.0) as client:\n    # base_url 让后续用相对路径\n    client.get(\"/api/products\")          # 实际 http://localhost:8000/api/products\n    client.get(\"/api/orders\")\n# with 退出自动关连接池\n```\n\n**超时**:`timeout=5.0`(秒)。不设超时是生产大忌——网络挂起会让请求永远卡住。\n\n> 本节作业接收 `client` 参数,就是为了让外部决定 client 配置(base_url/超时/连接池),函数只关心业务。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-13.5",
+      "heading": "§13.5 测试神器:MockTransport 🔴",
+      "secNum": "13.5",
+      "body": "**问题**:测 `fetch_products` 总不能真起一个服务器。怎么测?\n\n**答案**:`httpx.MockTransport` 拦截请求,返回你预设的假响应。**不用真服务**。\n\n```python\nimport httpx\n\ndef handler(request):                       # handler 决定怎么响应\n    # request.url / request.method / request.read()(请求体)都可读\n    return httpx.Response(200, json=[{\"name\": \"键盘\"}])\n\ntransport = httpx.MockTransport(handler)\nclient = httpx.Client(transport=transport)  # 这个 client 的请求被 handler 接管\n\nfetch_products(client, \"http://x/api\")      # 拿到假响应 [{\"name\":\"键盘\"}]\n```\n\n`handler` 是个函数,接收 `request`,返回 `httpx.Response(状态码, json=...)`。你可以:\n- 按状态码返回不同响应(200/404/500)\n- 读取请求验证(`request.read()` 拿 body,`request.url` 拿 URL)\n\n> 🟡 **Java 对比**:= MockWebServer / WireMock / Spring `MockRestServiceServer`。httpx 的 MockTransport 内置,无需三方库。本课程 M3 所有「调用 HTTP」的测试都用它。\n\n测试文件里的 `make_client(handler)` 就是这个套路,看一眼就懂。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-13.6",
+      "heading": "§13.6 Java 老手常踩的坑 ⚠️",
+      "secNum": "13.6",
+      "body": "1. **忘 `raise_for_status`**:不调它,404/500 会被当正常响应,bug 难查。生产代码总要调。\n2. **POST 忘 `json=`**:用 `data=` 发的是表单,`json=` 才是 JSON body。调 API 几乎都用 `json=`。\n3. **不设超时**:生产大忌。网络挂起 → 请求永远卡住 → 线程耗尽。永远 `timeout=`。\n4. **每次新建连接**:循环里 `httpx.get()` 性能差。用 `httpx.Client` 复用。\n5. **测试起真服务**:别为测试起 server。用 MockTransport。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `fetch_products` | GET + raise_for_status | 🟢 |\n| `create_product` | POST + json | 🟢 |\n| `get_product_or_none` | 404 处理 | 🟡 |\n\n```bash\nuv run pytest 03_web_framework/ch13/test_ch13_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能用 httpx 发 GET/POST,知道 `json=` 和 `params=` 的区别\n- [ ] 知道 `raise_for_status` 的作用,为什么生产必须调\n- [ ] 会用 MockTransport 写不依赖真服务的测试\n- [ ] 3 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「为什么 `raise_for_status` 几乎总要调?不调会怎样?」— 重读 §13.1\n2. 「MockTransport 怎么让我们不用真服务就能测 HTTP 调用?」— 重读 §13.5",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch13 掌握「调」API 后,进 **Ch14 · FastAPI 入门**——开始「**写**」API。定义 Pydantic 模型、写第一个 `@app.get`/`@app.post`,用 TestClient 测自己的 API。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "fetch_products",
+      "testClass": "TestFetchProducts",
+      "skeleton": "def fetch_products(client: httpx.Client, url: str):\n    \"\"\"\n    【GET · §13.1】GET 商品列表,返回解析后的 JSON。【非 2xx 抛异常】。\n\n    示例:\n        fetch_products(client, \"http://localhost:8000/api/products\")\n            -> [{\"name\":\"键盘\"}, ...]\n\n    思路:\n        resp = client.get(url)\n        resp.raise_for_status()    # 4xx/5xx 抛 HTTPStatusError(不自己判 status_code)\n        return resp.json()\n    \"\"\"\n    # TODO: get + raise_for_status + json\n    ..."
+    },
+    {
+      "name": "create_product",
+      "testClass": "TestCreateProduct",
+      "skeleton": "def create_product(client: httpx.Client, url: str, product: dict) -> dict:\n    \"\"\"\n    【POST · §13.2】POST 创建商品(json body),返回服务端响应(通常含生成的 id)。\n\n    示例:\n        create_product(client, \"/api/products\", {\"name\":\"键盘\",\"price\":599})\n            -> {\"id\":1, \"name\":\"键盘\", \"price\":599}\n\n    思路:client.post(url, json=product) —— json= 参数自动序列化 + 设 Content-Type。\n         再 raise_for_status + resp.json()。\n    \"\"\"\n    # TODO: post(url, json=...) + raise_for_status + json\n    ..."
+    },
+    {
+      "name": "get_product_or_none",
+      "testClass": "TestGetProductOrNone",
+      "skeleton": "def get_product_or_none(client: httpx.Client, url: str):\n    \"\"\"\n    【状态码处理 · §13.3】GET 单个商品;【404 返回 None】,其他错误(500 等)抛异常。\n\n    示例:\n        get_product_or_none(client, \"/api/products/999\")  -> None(不存在)\n        get_product_or_none(client, \"/api/products/1\")    -> {\"id\":1,...}\n\n    思路:\n        resp = client.get(url)\n        if resp.status_code == 404:     # 单独放行 404\n            return None\n        resp.raise_for_status()          # 其他错误抛\n        return resp.json()\n    \"\"\"\n    # TODO: get + 判 404 返回 None + raise_for_status + json\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh13 作业:HTTP 客户端 httpx —— 调用 API。\n\n3 个函数演示「调」REST API 的常见模式:GET 列表 / POST 创建 / GET 单个(处理 404)。\n每个函数接收一个 httpx.Client 参数(依赖注入:实战传 httpx.Client(),测试传带\nMockTransport 的 client,无需真服务)。\n\n    uv run pytest 03_web_framework/ch13/test_ch13_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport httpx\n\n\n# ========== §13.1 GET + raise_for_status ==========\n\n\n# ========== §13.2 POST + json body ==========\n\n\n# ========== §13.3 处理 404 ==========\n\n\n# ---------------------------------------------------------------------\n# 实战中这样用(真服务):\n#     with httpx.Client(base_url=\"http://localhost:8000\", timeout=5.0) as client:\n#         products = fetch_products(client, \"/api/products\")\n# 测试用 MockTransport 模拟响应(见 test_ch13_assignment.py / tutorial §13.5)\n# ---------------------------------------------------------------------"
+}

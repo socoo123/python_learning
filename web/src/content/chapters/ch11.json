@@ -1,0 +1,169 @@
+{
+  "id": "ch11",
+  "num": "11",
+  "title": "数据交换:json / csv / datetime",
+  "runMode": "pyodide",
+  "tutorialMd": "# Ch11 · 数据交换:json / csv / datetime\n\n> **预计**:0.5 天 ｜ **前置**:Ch02 ｜ **M2 第四章**\n> **目标**:掌握数据交换三件套——`json`(序列化)、`datetime`(时间,对比 Java `java.time`)。重点是 **datetime 不能直接 json.dumps 的坑**和它的解法。\n\n> 📐 **本教程的契约**:下面每一节对应作业里的一个任务。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `parse_products_json` | §11.1 | json.loads |\n| `to_pretty_json` | §11.2 | json.dumps(indent/ensure_ascii) |\n| `parse_iso_datetime` | §11.3 | datetime.fromisoformat |\n| `days_between` | §11.4 | date + timedelta |\n| `to_json_with_datetime` | §11.5 | default 钩子(序列化 datetime) |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## §11.1 json:loads / dumps(对应:`parse_products_json`)🟢\n\n`json` 模块四个核心函数,**两两配对**(字符串版带 `s`):\n\n| 函数 | 方向 | 作用 |\n|------|------|------|\n| `json.loads(s)` | 字符串 → 对象 | parse(解析) |\n| `json.dumps(obj)` | 对象 → 字符串 | serialize(序列化) |\n| `json.load(f)` | 文件 → 对象 | 从文件读 |\n| `json.dump(obj, f)` | 对象 → 文件 | 写到文件 |\n\n```python\nimport json\n\n# 解析\njson.loads('[{\"name\":\"键盘\",\"price\":599}]')   # [{'name':'键盘','price':599}]\njson.loads('{\"a\":1}')                          # {'a':1}\n\n# 序列化\njson.dumps({\"a\": 1})                           # '{\"a\": 1}'\n```\n\n> 🟡 **Java 对比**:= Jackson/Gson 的 `readValue`/`writeValueAsString`。JSON 数组 → Python `list`,JSON 对象 → Python `dict`,JSON 数字 → int/float。Python 内置 json 够用,无需三方库。\n\n> ✅ 做 `parse_products_json` 题:`json.loads(text)`。\n\n---\n\n## §11.2 json.dumps 格式化(对应:`to_pretty_json`)🟢\n\n```python\njson.dumps({\"name\":\"键盘\",\"price\":599})\n# '{\"name\": \"键盘\", \"price\": 599}'   ← 默认中文转义!不可读\n\njson.dumps({\"name\":\"键盘\",\"price\":599}, ensure_ascii=False)\n# '{\"name\": \"键盘\", \"price\": 599}'           ← 中文原样输出 ✅\n\njson.dumps({\"a\":1}, indent=2)\n# '{\\n  \"a\": 1\\n}'                            ← 缩进美观\n\njson.dumps({\"b\":2,\"a\":1}, sort_keys=True)\n# '{\"a\": 1, \"b\": 2}'                          ← 键排序\n```\n\n**两个最常用参数**:\n- `ensure_ascii=False` —— 中文/emoji 原样输出(默认 True 会转义成 `\\uXXXX`,调试时不可读)\n- `indent=2` —— 美观缩进\n\n> ✅ 做 `to_pretty_json` 题:`json.dumps(obj, indent=2, ensure_ascii=False)`。\n\n---\n\n## §11.3 datetime:解析与格式化(对应:`parse_iso_datetime`)🟡\n\nPython 时间类型(对比 Java `java.time`):\n\n| Python | Java 对应 | 含义 |\n|--------|-----------|------|\n| `date` | `LocalDate` | 只有日期 |\n| `datetime` | `LocalDateTime` | 日期+时间 |\n| `time` | `LocalTime` | 只有时间 |\n| `timedelta` | `Duration`/`Period` | 时间差 |\n\n```python\nfrom datetime import date, datetime\n\n# 创建\ndatetime(2026, 7, 21, 10, 30)        # 2026-07-21 10:30:00\ndate(2026, 7, 21)                     # 2026-07-21\ndate.today()                          # 今天\n\n# ISO 字符串 ↔ 对象(3.7+ 最方便的方式)\ndatetime.fromisoformat(\"2026-07-21T10:30:00\")   # 字符串 → datetime\ndatetime(2026,7,21,10,30).isoformat()           # datetime → '2026-07-21T10:30:00'\ndate.fromisoformat(\"2026-07-21\")                # 字符串 → date\n```\n\n> 🟡 **Java 对比**:`fromisoformat` ≈ `LocalDateTime.parse(s)`;`isoformat()` ≈ `.toString()`(Java 默认就是 ISO 格式)。Python 的 ISO 解析 3.11+ 很宽松,各种格式都认。\n\n> ✅ 做 `parse_iso_datetime` 题:`datetime.fromisoformat(s)`。\n\n---\n\n## §11.4 timedelta:时间差(对应:`days_between`)🟡\n\n两个 `date`/`datetime` 相减得到 `timedelta`,`.days` 取天数:\n\n```python\nfrom datetime import date\n\nd1 = date.fromisoformat(\"2026-07-01\")\nd2 = date.fromisoformat(\"2026-07-21\")\ndelta = d2 - d1          # timedelta(days=20)\ndelta.days               # 20\ndelta.total_seconds()    # datetime 差用这个\n\n# 加减时间\ndate.today() + timedelta(days=7)    # 一周后\n```\n\n> 🟡 **Java 对比**:`Duration.between(d1,d2).toDays()`。Python 直接 `d2 - d1` 更直观(运算符重载)。\n\n> ✅ 做 `days_between` 题:`abs((date.fromisoformat(s2) - date.fromisoformat(s1)).days)`(abs 保证顺序无关)。\n\n---\n\n## §11.5 序列化陷阱:datetime 不能直接 dumps(对应:`to_json_with_datetime`)🔴\n\n**大坑**:`json.dumps` 默认不认识 `datetime`,直接序列化会报错:\n\n```python\njson.dumps({\"created_at\": datetime(2026,7,21)})\n# TypeError: Object of type datetime is not JSON serializable\n```\n\n### 解法:`default` 钩子\n\n`json.dumps(obj, default=函数)` —— 遇到不认识的类型时,调用 `default(对象)`,让它返回一个 json 认识的值(通常是字符串):\n\n```python\ndef _datetime_default(o):\n    if isinstance(o, (datetime, date)):\n        return o.isoformat()         # 转成 ISO 字符串\n    raise TypeError(f\"不支持: {type(o)}\")\n\njson.dumps({\"created_at\": datetime(2026,7,21,10,30)}, default=_datetime_default)\n# '{\"created_at\": \"2026-07-21T10:30:00\"}'   ✅\n```\n\n> 🟡 **Java 对比**:= Jackson 的自定义 `JsonSerializer` / `@JsonFormat`。Python 一个 `default` 函数搞定所有自定义类型。\n>\n> **进阶**:正式项目里推荐用 `@dataclass` + Pydantic(M3 Ch14),它自动处理 datetime 序列化,不用手写 default。本章先理解原理。\n\n> ✅ 做 `to_json_with_datetime` 题:写 `_datetime_default` 钩子,`json.dumps(obj, default=_datetime_default)`。\n\n---\n\n## §11.6 csv(简介,本章不考)\n\n```python\nimport csv\nwith open(\"data.csv\", newline=\"\", encoding=\"utf-8\") as f:\n    reader = csv.DictReader(f)      # 每行变成 dict(用表头当键)\n    for row in reader:\n        print(row[\"name\"], row[\"price\"])\n```\n\n知道有 `csv.DictReader`/`DictWriter` 即可,日常 CSV 处理够用。大数据量用 pandas。\n\n---\n\n## §11.7 时区坑(简介,本章不考)\n\nPython datetime 默认是 **naive**(无时区)。涉及多时区要加 `tzinfo`:\n\n```python\nfrom datetime import timezone, timedelta\ntz = timezone(timedelta(hours=8))    # UTC+8\ndatetime(2026,7,21,10,30, tzinfo=tz)  # aware datetime\n```\n\n> ⚠️ 生产代码涉及时间,**始终用 aware datetime**(带时区),否则跨时区会出诡异 bug。这和 Java 用 `ZonedDateTime` 一个道理。本章不深入,记住「naive 不可用于跨时区」。\n\n---\n\n## §11.8 Java 老手常踩的坑 ⚠️\n\n1. **中文转义**:`json.dumps` 默认 `ensure_ascii=True`,中文变 `\\uXXXX`。调试/存中文用 `ensure_ascii=False`。\n2. **datetime 不能直接 dumps**:必须用 `default` 钩子或 Pydantic。\n3. **loads vs load / dumps vs dump**:带 `s` 的操作字符串,不带的操作文件。别搞混。\n4. **naive datetime 跨时区**:默认 datetime 无时区,跨时区计算会错。生产用 aware。\n5. **ISO 格式最稳**:`fromisoformat`/`isoformat` 是 3.7+ 最佳实践,别用老的 `strptime`/`strftime`(除非自定义格式)。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `parse_products_json` | json.loads | 🟢 |\n| `to_pretty_json` | json.dumps 格式化 | 🟢 |\n| `parse_iso_datetime` | datetime.fromisoformat | 🟢 |\n| `days_between` | date + timedelta | 🟡 |\n| `to_json_with_datetime` | default 钩子 | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch11/test_ch11_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 知道 `loads/load`、`dumps/dump` 的区别(字符串 vs 文件)\n- [ ] 能用 `default` 钩子让 json.dumps 支持 datetime\n- [ ] 知道 `ensure_ascii=False` 让中文不转义\n- [ ] 5 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「为什么 json.dumps 不能直接序列化 datetime?怎么解决?」— 重读 §11.5\n2. 「Python datetime 和 Java java.time 怎么对应?naive/aware 是什么?」— 重读 §11.3/§11.7\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh11 掌握后,进 **Ch12 · 现代工具链(logging/配置/项目结构)**——M2 收官。把工程化基础打好,准备进 M3 Web 框架。\n",
+  "assignment": "\"\"\"\nCh11 作业:json / csv / datetime。\n\n5 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch11/test_ch11_assignment.py -v\n\n全绿 = 你掌握了 Ch11。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport json\nfrom datetime import date, datetime\n\n\n# ========== §11.1 json.loads ==========\n\n\ndef parse_products_json(text: str):\n    \"\"\"\n    【json.loads · §11.1】把 JSON 字符串解析成 Python 对象。\n\n    示例:\n        parse_products_json('[{\"name\":\"键盘\",\"price\":599}]')[0][\"name\"]  -> \"键盘\"\n\n    思路:json.loads(字符串)。\n    \"\"\"\n    # TODO: json.loads(text)\n    ...\n\n\n# ========== §11.2 json.dumps(格式化)==========\n\n\ndef to_pretty_json(obj) -> str:\n    \"\"\"\n    【json.dumps · §11.2】把对象序列化成【美观的】JSON 字符串:带缩进 + 中文原样输出。\n\n    示例:\n        to_pretty_json({\"name\":\"键盘\"})  -> 含 \"键盘\"(中文不被转义)\n\n    思路:json.dumps(obj, indent=2, ensure_ascii=False)。\n         indent=2 → 缩进美观;ensure_ascii=False → 中文不转义。\n    \"\"\"\n    # TODO: json.dumps(obj, indent=2, ensure_ascii=False)\n    ...\n\n\n# ========== §11.3 datetime 解析 ==========\n\n\ndef parse_iso_datetime(s: str) -> datetime:\n    \"\"\"\n    【datetime · §11.3】把 ISO 格式字符串解析成 datetime 对象。\n\n    示例:\n        dt = parse_iso_datetime(\"2026-07-21T10:30:00\")\n        dt.year   -> 2026\n        dt.hour   -> 10\n\n    思路:datetime.fromisoformat(s)(3.7+ 内置,直接解析 ISO 字符串)。\n    \"\"\"\n    # TODO: datetime.fromisoformat(s)\n    ...\n\n\n# ========== §11.4 date + timedelta ==========\n\n\ndef days_between(s1: str, s2: str) -> int:\n    \"\"\"\n    【date + timedelta · §11.4】两个日期字符串之间的天数差(绝对值,顺序无关)。\n\n    示例:\n        days_between(\"2026-07-01\", \"2026-07-21\")  -> 20\n\n    思路:\n        d1 = date.fromisoformat(s1); d2 = date.fromisoformat(s2)\n        两个 date 相减得到 timedelta,取 .days,再 abs() 取绝对值。\n    \"\"\"\n    # TODO: date.fromisoformat + 相减 + .days + abs\n    ...\n\n\n# ========== §11.5 自定义序列化(处理 datetime)==========\n\n\ndef _datetime_default(o):\n    \"\"\"\n    【default 钩子 · §11.5】json.dumps 遇到【不认识的对象】时调用的兜底函数。\n    把 datetime/date 转成 ISO 字符串,其他类型抛 TypeError。\n\n    思路:\n        if isinstance(o, (datetime, date)):\n            return o.isoformat()\n        raise TypeError(...)\n    \"\"\"\n    # TODO: isinstance 判断 + isoformat / raise TypeError\n    ...\n\n\ndef to_json_with_datetime(obj) -> str:\n    \"\"\"\n    【default 钩子 · §11.5】序列化含 datetime 的对象。\n    json.dumps 默认不认识 datetime(会报错),用 default=_datetime_default 教它。\n\n    示例:\n        to_json_with_datetime({\"created_at\": datetime(2026,7,21,10,30)})\n        -> 含 \"2026-07-21T10:30:00\"\n\n    思路:json.dumps(obj, default=_datetime_default)。\n    \"\"\"\n    # TODO: json.dumps(obj, default=_datetime_default)\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(parse_products_json('[{\"name\":\"键盘\",\"price\":599}]'))\n    print(to_pretty_json({\"name\": \"键盘\", \"price\": 599}))\n    print(parse_iso_datetime(\"2026-07-21T10:30:00\"))\n    print(\"days:\", days_between(\"2026-07-01\", \"2026-07-21\"))\n    print(to_json_with_datetime({\"created_at\": datetime(2026, 7, 21, 10, 30)}))\n",
+  "testName": "ch11_assignment",
+  "testSource": "\"\"\"\nCh11 作业测试。运行: uv run pytest 02_stdlib/ch11/test_ch11_assignment.py -v\n\"\"\"\nimport json\nfrom datetime import date, datetime\n\nimport pytest\n\nfrom ch11_assignment import (\n    parse_products_json,\n    to_pretty_json,\n    parse_iso_datetime,\n    days_between,\n    to_json_with_datetime,\n)\n\n\n# ---------- parse_products_json:json.loads ----------\nclass TestParseProductsJson:\n    def test_list_of_products(self):\n        s = '[{\"name\":\"键盘\",\"price\":599}]'\n        r = parse_products_json(s)\n        assert r[0][\"name\"] == \"键盘\"\n        assert r[0][\"price\"] == 599\n\n    def test_dict(self):\n        assert parse_products_json('{\"a\":1}') == {\"a\": 1}\n\n    def test_invalid_raises(self):\n        with pytest.raises(json.JSONDecodeError):\n            parse_products_json(\"not json\")\n\n\n# ---------- to_pretty_json:json.dumps ----------\nclass TestToPrettyJson:\n    def test_indented(self):\n        s = to_pretty_json({\"a\": 1})\n        assert '\"a\": 1' in s   # indent=2 产生换行 + 缩进\n\n    def test_chinese_not_escaped(self):\n        s = to_pretty_json({\"name\": \"键盘\"})\n        assert \"键盘\" in s     # ensure_ascii=False,中文原样输出\n\n    def test_roundtrip(self):\n        obj = {\"x\": [1, 2], \"y\": \"hi\"}\n        assert parse_products_json(to_pretty_json(obj)) == obj\n\n\n# ---------- parse_iso_datetime:datetime ----------\nclass TestParseIsoDatetime:\n    def test_full_datetime(self):\n        dt = parse_iso_datetime(\"2026-07-21T10:30:00\")\n        assert dt.year == 2026\n        assert dt.hour == 10\n        assert dt.minute == 30\n\n    def test_date_only(self):\n        dt = parse_iso_datetime(\"2026-07-21\")\n        assert dt.month == 7\n        assert dt.day == 21\n\n    def test_returns_datetime(self):\n        assert isinstance(parse_iso_datetime(\"2026-01-01\"), datetime)\n\n\n# ---------- days_between:date + timedelta ----------\nclass TestDaysBetween:\n    def test_same_day_zero(self):\n        assert days_between(\"2026-07-21\", \"2026-07-21\") == 0\n\n    def test_twenty_days(self):\n        assert days_between(\"2026-07-01\", \"2026-07-21\") == 20\n\n    def test_order_independent(self):\n        # abs:参数顺序不影响结果\n        assert days_between(\"2026-07-21\", \"2026-07-01\") == 20\n\n    def test_across_month(self):\n        assert days_between(\"2026-01-31\", \"2026-03-01\") == 29   # 2026 非闰年,2月28天\n\n\n# ---------- to_json_with_datetime:自定义序列化 ----------\nclass TestToJsonWithDatetime:\n    def test_serializes_datetime(self):\n        dt = datetime(2026, 7, 21, 10, 30, 0)\n        s = to_json_with_datetime({\"created_at\": dt})\n        assert \"2026-07-21T10:30:00\" in s\n\n    def test_serializes_date(self):\n        d = date(2026, 7, 21)\n        s = to_json_with_datetime({\"d\": d})\n        assert \"2026-07-21\" in s\n\n    def test_normal_data_still_works(self):\n        s = to_json_with_datetime({\"name\": \"x\", \"price\": 10})\n        assert \"x\" in s and \"10\" in s\n\n    def test_unsupported_type_raises(self):\n        # 没法序列化的类型,default 也救不了 → 抛 TypeError\n        with pytest.raises(TypeError):\n            to_json_with_datetime({\"obj\": object()})\n",
+  "reviewMd": "# Ch11 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | `json.loads/load` 和 `dumps/dump` 区别? | 带 `s` 的(loads/dumps)操作【字符串】;不带的(load/dump)操作【文件】。loads=解析,dumps=序列化 | ⬜ |\n| 2 | `json.dumps` 默认把中文输出成什么?怎么修? | 默认 `ensure_ascii=True`,中文转义成 `\\uXXXX`(不可读)。加 `ensure_ascii=False` 让中文原样输出 | ⬜ |\n| 3 | 为什么 `json.dumps(datetime对象)` 会报错?怎么解决? | json 只认基本类型,不认识 datetime。解法:`json.dumps(obj, default=钩子函数)`,钩子里把 datetime 转成 isoformat 字符串。= Java 自定义 JsonSerializer | ⬜ |\n| 4 | Python `date`/`datetime`/`timedelta` 对应 Java 什么? | date=LocalDate,datetime=LocalDateTime,timedelta=Duration/Period | ⬜ |\n| 5 | ISO 字符串和 datetime 怎么互转? | `datetime.fromisoformat(s)` 字符串→对象;`dt.isoformat()` 对象→字符串。这是 3.7+ 最佳实践,比 strptime/strftime 简单 | ⬜ |\n| 6 | 两个 date 相减得到什么?怎么取天数? | 得到 `timedelta`,`.days` 取整天数,`.total_seconds()` 取总秒数。要绝对值用 abs() | ⬜ |\n| 7 | naive datetime 和 aware datetime? | naive=无时区(默认),aware=带 tzinfo。**跨时区必须用 aware**,否则出错。生产代码始终带时区 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「json.dumps 为什么不能直接序列化 datetime,default 钩子怎么救」?\n- [ ] 能说清「naive/aware datetime 的区别和坑」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": true,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch02 ｜ **M2 第四章**\n> **目标**:掌握数据交换三件套——`json`(序列化)、`datetime`(时间,对比 Java `java.time`)。重点是 **datetime 不能直接 json.dumps 的坑**和它的解法。\n\n> 📐 **本教程的契约**:下面每一节对应作业里的一个任务。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `parse_products_json` | §11.1 | json.loads |\n| `to_pretty_json` | §11.2 | json.dumps(indent/ensure_ascii) |\n| `parse_iso_datetime` | §11.3 | datetime.fromisoformat |\n| `days_between` | §11.4 | date + timedelta |\n| `to_json_with_datetime` | §11.5 | default 钩子(序列化 datetime) |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-11.1",
+      "heading": "§11.1 json:loads / dumps(对应:`parse_products_json`)🟢",
+      "secNum": "11.1",
+      "body": "`json` 模块四个核心函数,**两两配对**(字符串版带 `s`):\n\n| 函数 | 方向 | 作用 |\n|------|------|------|\n| `json.loads(s)` | 字符串 → 对象 | parse(解析) |\n| `json.dumps(obj)` | 对象 → 字符串 | serialize(序列化) |\n| `json.load(f)` | 文件 → 对象 | 从文件读 |\n| `json.dump(obj, f)` | 对象 → 文件 | 写到文件 |\n\n```python\nimport json\n\n# 解析\njson.loads('[{\"name\":\"键盘\",\"price\":599}]')   # [{'name':'键盘','price':599}]\njson.loads('{\"a\":1}')                          # {'a':1}\n\n# 序列化\njson.dumps({\"a\": 1})                           # '{\"a\": 1}'\n```\n\n> 🟡 **Java 对比**:= Jackson/Gson 的 `readValue`/`writeValueAsString`。JSON 数组 → Python `list`,JSON 对象 → Python `dict`,JSON 数字 → int/float。Python 内置 json 够用,无需三方库。\n\n> ✅ 做 `parse_products_json` 题:`json.loads(text)`。\n\n---",
+      "exerciseFunctions": [
+        "parse_products_json"
+      ]
+    },
+    {
+      "id": "sec-11.2",
+      "heading": "§11.2 json.dumps 格式化(对应:`to_pretty_json`)🟢",
+      "secNum": "11.2",
+      "body": "```python\njson.dumps({\"name\":\"键盘\",\"price\":599})\n# '{\"name\": \"键盘\", \"price\": 599}'   ← 默认中文转义!不可读\n\njson.dumps({\"name\":\"键盘\",\"price\":599}, ensure_ascii=False)\n# '{\"name\": \"键盘\", \"price\": 599}'           ← 中文原样输出 ✅\n\njson.dumps({\"a\":1}, indent=2)\n# '{\\n  \"a\": 1\\n}'                            ← 缩进美观\n\njson.dumps({\"b\":2,\"a\":1}, sort_keys=True)\n# '{\"a\": 1, \"b\": 2}'                          ← 键排序\n```\n\n**两个最常用参数**:\n- `ensure_ascii=False` —— 中文/emoji 原样输出(默认 True 会转义成 `\\uXXXX`,调试时不可读)\n- `indent=2` —— 美观缩进\n\n> ✅ 做 `to_pretty_json` 题:`json.dumps(obj, indent=2, ensure_ascii=False)`。\n\n---",
+      "exerciseFunctions": [
+        "to_pretty_json"
+      ]
+    },
+    {
+      "id": "sec-11.3",
+      "heading": "§11.3 datetime:解析与格式化(对应:`parse_iso_datetime`)🟡",
+      "secNum": "11.3",
+      "body": "Python 时间类型(对比 Java `java.time`):\n\n| Python | Java 对应 | 含义 |\n|--------|-----------|------|\n| `date` | `LocalDate` | 只有日期 |\n| `datetime` | `LocalDateTime` | 日期+时间 |\n| `time` | `LocalTime` | 只有时间 |\n| `timedelta` | `Duration`/`Period` | 时间差 |\n\n```python\nfrom datetime import date, datetime\n\n# 创建\ndatetime(2026, 7, 21, 10, 30)        # 2026-07-21 10:30:00\ndate(2026, 7, 21)                     # 2026-07-21\ndate.today()                          # 今天\n\n# ISO 字符串 ↔ 对象(3.7+ 最方便的方式)\ndatetime.fromisoformat(\"2026-07-21T10:30:00\")   # 字符串 → datetime\ndatetime(2026,7,21,10,30).isoformat()           # datetime → '2026-07-21T10:30:00'\ndate.fromisoformat(\"2026-07-21\")                # 字符串 → date\n```\n\n> 🟡 **Java 对比**:`fromisoformat` ≈ `LocalDateTime.parse(s)`;`isoformat()` ≈ `.toString()`(Java 默认就是 ISO 格式)。Python 的 ISO 解析 3.11+ 很宽松,各种格式都认。\n\n> ✅ 做 `parse_iso_datetime` 题:`datetime.fromisoformat(s)`。\n\n---",
+      "exerciseFunctions": [
+        "parse_iso_datetime"
+      ]
+    },
+    {
+      "id": "sec-11.4",
+      "heading": "§11.4 timedelta:时间差(对应:`days_between`)🟡",
+      "secNum": "11.4",
+      "body": "两个 `date`/`datetime` 相减得到 `timedelta`,`.days` 取天数:\n\n```python\nfrom datetime import date\n\nd1 = date.fromisoformat(\"2026-07-01\")\nd2 = date.fromisoformat(\"2026-07-21\")\ndelta = d2 - d1          # timedelta(days=20)\ndelta.days               # 20\ndelta.total_seconds()    # datetime 差用这个\n\n# 加减时间\ndate.today() + timedelta(days=7)    # 一周后\n```\n\n> 🟡 **Java 对比**:`Duration.between(d1,d2).toDays()`。Python 直接 `d2 - d1` 更直观(运算符重载)。\n\n> ✅ 做 `days_between` 题:`abs((date.fromisoformat(s2) - date.fromisoformat(s1)).days)`(abs 保证顺序无关)。\n\n---",
+      "exerciseFunctions": [
+        "days_between"
+      ]
+    },
+    {
+      "id": "sec-11.5",
+      "heading": "§11.5 序列化陷阱:datetime 不能直接 dumps(对应:`to_json_with_datetime`)🔴",
+      "secNum": "11.5",
+      "body": "**大坑**:`json.dumps` 默认不认识 `datetime`,直接序列化会报错:\n\n```python\njson.dumps({\"created_at\": datetime(2026,7,21)})\n# TypeError: Object of type datetime is not JSON serializable\n```\n\n### 解法:`default` 钩子\n\n`json.dumps(obj, default=函数)` —— 遇到不认识的类型时,调用 `default(对象)`,让它返回一个 json 认识的值(通常是字符串):\n\n```python\ndef _datetime_default(o):\n    if isinstance(o, (datetime, date)):\n        return o.isoformat()         # 转成 ISO 字符串\n    raise TypeError(f\"不支持: {type(o)}\")\n\njson.dumps({\"created_at\": datetime(2026,7,21,10,30)}, default=_datetime_default)\n# '{\"created_at\": \"2026-07-21T10:30:00\"}'   ✅\n```\n\n> 🟡 **Java 对比**:= Jackson 的自定义 `JsonSerializer` / `@JsonFormat`。Python 一个 `default` 函数搞定所有自定义类型。\n>\n> **进阶**:正式项目里推荐用 `@dataclass` + Pydantic(M3 Ch14),它自动处理 datetime 序列化,不用手写 default。本章先理解原理。\n\n> ✅ 做 `to_json_with_datetime` 题:写 `_datetime_default` 钩子,`json.dumps(obj, default=_datetime_default)`。\n\n---",
+      "exerciseFunctions": [
+        "to_json_with_datetime"
+      ]
+    },
+    {
+      "id": "sec-11.6",
+      "heading": "§11.6 csv(简介,本章不考)",
+      "secNum": "11.6",
+      "body": "```python\nimport csv\nwith open(\"data.csv\", newline=\"\", encoding=\"utf-8\") as f:\n    reader = csv.DictReader(f)      # 每行变成 dict(用表头当键)\n    for row in reader:\n        print(row[\"name\"], row[\"price\"])\n```\n\n知道有 `csv.DictReader`/`DictWriter` 即可,日常 CSV 处理够用。大数据量用 pandas。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-11.7",
+      "heading": "§11.7 时区坑(简介,本章不考)",
+      "secNum": "11.7",
+      "body": "Python datetime 默认是 **naive**(无时区)。涉及多时区要加 `tzinfo`:\n\n```python\nfrom datetime import timezone, timedelta\ntz = timezone(timedelta(hours=8))    # UTC+8\ndatetime(2026,7,21,10,30, tzinfo=tz)  # aware datetime\n```\n\n> ⚠️ 生产代码涉及时间,**始终用 aware datetime**(带时区),否则跨时区会出诡异 bug。这和 Java 用 `ZonedDateTime` 一个道理。本章不深入,记住「naive 不可用于跨时区」。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-11.8",
+      "heading": "§11.8 Java 老手常踩的坑 ⚠️",
+      "secNum": "11.8",
+      "body": "1. **中文转义**:`json.dumps` 默认 `ensure_ascii=True`,中文变 `\\uXXXX`。调试/存中文用 `ensure_ascii=False`。\n2. **datetime 不能直接 dumps**:必须用 `default` 钩子或 Pydantic。\n3. **loads vs load / dumps vs dump**:带 `s` 的操作字符串,不带的操作文件。别搞混。\n4. **naive datetime 跨时区**:默认 datetime 无时区,跨时区计算会错。生产用 aware。\n5. **ISO 格式最稳**:`fromisoformat`/`isoformat` 是 3.7+ 最佳实践,别用老的 `strptime`/`strftime`(除非自定义格式)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `parse_products_json` | json.loads | 🟢 |\n| `to_pretty_json` | json.dumps 格式化 | 🟢 |\n| `parse_iso_datetime` | datetime.fromisoformat | 🟢 |\n| `days_between` | date + timedelta | 🟡 |\n| `to_json_with_datetime` | default 钩子 | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch11/test_ch11_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 知道 `loads/load`、`dumps/dump` 的区别(字符串 vs 文件)\n- [ ] 能用 `default` 钩子让 json.dumps 支持 datetime\n- [ ] 知道 `ensure_ascii=False` 让中文不转义\n- [ ] 5 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「为什么 json.dumps 不能直接序列化 datetime?怎么解决?」— 重读 §11.5\n2. 「Python datetime 和 Java java.time 怎么对应?naive/aware 是什么?」— 重读 §11.3/§11.7",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch11 掌握后,进 **Ch12 · 现代工具链(logging/配置/项目结构)**——M2 收官。把工程化基础打好,准备进 M3 Web 框架。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "parse_products_json",
+      "testClass": "TestParseProductsJson",
+      "skeleton": "def parse_products_json(text: str):\n    \"\"\"\n    【json.loads · §11.1】把 JSON 字符串解析成 Python 对象。\n\n    示例:\n        parse_products_json('[{\"name\":\"键盘\",\"price\":599}]')[0][\"name\"]  -> \"键盘\"\n\n    思路:json.loads(字符串)。\n    \"\"\"\n    # TODO: json.loads(text)\n    ..."
+    },
+    {
+      "name": "to_pretty_json",
+      "testClass": "TestToPrettyJson",
+      "skeleton": "def to_pretty_json(obj) -> str:\n    \"\"\"\n    【json.dumps · §11.2】把对象序列化成【美观的】JSON 字符串:带缩进 + 中文原样输出。\n\n    示例:\n        to_pretty_json({\"name\":\"键盘\"})  -> 含 \"键盘\"(中文不被转义)\n\n    思路:json.dumps(obj, indent=2, ensure_ascii=False)。\n         indent=2 → 缩进美观;ensure_ascii=False → 中文不转义。\n    \"\"\"\n    # TODO: json.dumps(obj, indent=2, ensure_ascii=False)\n    ..."
+    },
+    {
+      "name": "parse_iso_datetime",
+      "testClass": "TestParseIsoDatetime",
+      "skeleton": "def parse_iso_datetime(s: str) -> datetime:\n    \"\"\"\n    【datetime · §11.3】把 ISO 格式字符串解析成 datetime 对象。\n\n    示例:\n        dt = parse_iso_datetime(\"2026-07-21T10:30:00\")\n        dt.year   -> 2026\n        dt.hour   -> 10\n\n    思路:datetime.fromisoformat(s)(3.7+ 内置,直接解析 ISO 字符串)。\n    \"\"\"\n    # TODO: datetime.fromisoformat(s)\n    ..."
+    },
+    {
+      "name": "days_between",
+      "testClass": "TestDaysBetween",
+      "skeleton": "def days_between(s1: str, s2: str) -> int:\n    \"\"\"\n    【date + timedelta · §11.4】两个日期字符串之间的天数差(绝对值,顺序无关)。\n\n    示例:\n        days_between(\"2026-07-01\", \"2026-07-21\")  -> 20\n\n    思路:\n        d1 = date.fromisoformat(s1); d2 = date.fromisoformat(s2)\n        两个 date 相减得到 timedelta,取 .days,再 abs() 取绝对值。\n    \"\"\"\n    # TODO: date.fromisoformat + 相减 + .days + abs\n    ..."
+    },
+    {
+      "name": "_datetime_default",
+      "testClass": "TestDatetimeDefault",
+      "skeleton": "def _datetime_default(o):\n    \"\"\"\n    【default 钩子 · §11.5】json.dumps 遇到【不认识的对象】时调用的兜底函数。\n    把 datetime/date 转成 ISO 字符串,其他类型抛 TypeError。\n\n    思路:\n        if isinstance(o, (datetime, date)):\n            return o.isoformat()\n        raise TypeError(...)\n    \"\"\"\n    # TODO: isinstance 判断 + isoformat / raise TypeError\n    ..."
+    },
+    {
+      "name": "to_json_with_datetime",
+      "testClass": "TestToJsonWithDatetime",
+      "skeleton": "def to_json_with_datetime(obj) -> str:\n    \"\"\"\n    【default 钩子 · §11.5】序列化含 datetime 的对象。\n    json.dumps 默认不认识 datetime(会报错),用 default=_datetime_default 教它。\n\n    示例:\n        to_json_with_datetime({\"created_at\": datetime(2026,7,21,10,30)})\n        -> 含 \"2026-07-21T10:30:00\"\n\n    思路:json.dumps(obj, default=_datetime_default)。\n    \"\"\"\n    # TODO: json.dumps(obj, default=_datetime_default)\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh11 作业:json / csv / datetime。\n\n5 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch11/test_ch11_assignment.py -v\n\n全绿 = 你掌握了 Ch11。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport json\nfrom datetime import date, datetime\n\n\n# ========== §11.1 json.loads ==========\n\n\n# ========== §11.2 json.dumps(格式化)==========\n\n\n# ========== §11.3 datetime 解析 ==========\n\n\n# ========== §11.4 date + timedelta ==========\n\n\n# ========== §11.5 自定义序列化(处理 datetime)==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(parse_products_json('[{\"name\":\"键盘\",\"price\":599}]'))\n    print(to_pretty_json({\"name\": \"键盘\", \"price\": 599}))\n    print(parse_iso_datetime(\"2026-07-21T10:30:00\"))\n    print(\"days:\", days_between(\"2026-07-01\", \"2026-07-21\"))\n    print(to_json_with_datetime({\"created_at\": datetime(2026, 7, 21, 10, 30)}))"
+}

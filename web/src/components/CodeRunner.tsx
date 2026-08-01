@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
-import type { Chapter, Curriculum } from "../types";
+import type { Chapter, SharedContent } from "../types";
 import { getPyodide, runChapterTests, type RunResult } from "../lib/pyodide";
 import { defineDracula } from "../lib/monaco";
 import Terminal from "./Terminal";
@@ -9,7 +9,7 @@ type Status = "idle" | "loading" | "running" | "passed" | "failed" | "error";
 
 interface Props {
   chapter: Chapter;
-  shared: Curriculum["shared"];
+  shared: SharedContent;
 }
 
 export default function CodeRunner({ chapter, shared }: Props) {

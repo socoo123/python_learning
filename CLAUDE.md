@@ -54,11 +54,12 @@
 ## B.4 内容管线(自包含、可移植的核心)
 
 - `scripts/build-curriculum.ts`(Bun 原生跑,无需编译):从源仓库(默认 `../`,即 python_learning)扫描各章,烘焙出 `web/src/content/`:
-  - `curriculum.json`:每章元数据 `{ id, module, title, runMode, tutorialMd, assignmentSkeleton, testSource, reviewCards, mocks }`
-  - 把 `tutorial.md` 正文、`assignment.py`(`...` 骨架)、`test_*.py`、`review.md` 闪卡、`assets/mock_data/*` 全部嵌入
+  - `index.json`:模块/章节轻量目录 `{ id, title, runMode, ... }`(首页用)
+  - `shared.json`:`conftest` + mock 数据
+  - `chapters/chXX.json`:单章全文(tutorial / assignment / test / review / sections),**课程页懒加载**
 - **`src/content/` 提交进 git** → 网站运行时只读它,**不依赖源仓库** → web/ 可独立 clone 运行 / 独立上传 GitHub。
 - 源课程更新 → 跑 `bun run build:content` 重新烘焙 → 提交 diff。
-- 判断 runMode:扫 `assignment.py` / `test_*.py` 的 import —— 出现 `fastapi`/`sqlalchemy`/`httpx`/`psutil`/`subprocess`/`urllib`/`anthropic`/`openai` → `local`;否则 `pyodide`。
+- 判断 runMode:扫 `assignment.py` / `test_*.py` 的 import —— 出现 `fastapi`/`sqlalchemy`/`httpx`/`psutil`/`subprocess`/`urllib`/`anthropic`/`openai` → `local`;否则 `pyodide`。M5 目录强制 `local`。
 
 ## B.5 运行流程(Pyodide 章节)
 
@@ -81,7 +82,9 @@ web/                              ← 自包含,可独立成 repo / 上传 GitHu
 │   └── build-curriculum.ts       # bun 原生跑;读 ../ 源仓库 → 烘焙 src/content/
 ├── src/
 │   ├── content/                  # ★ 烘焙产物,提交 git(网站唯一数据源)
-│   │   └── curriculum.json
+│   │   ├── index.json            # 模块目录(轻量)
+│   │   ├── shared.json           # conftest + mocks
+│   │   └── chapters/chXX.json    # 单章全文(懒加载)
 │   ├── main.tsx
 │   ├── App.tsx                   # 路由
 │   ├── routes/

@@ -1,0 +1,141 @@
+{
+  "id": "ch12",
+  "num": "12",
+  "title": "现代工具链:logging / 配置 / 项目结构",
+  "runMode": "pyodide",
+  "tutorialMd": "# Ch12 · 现代工具链:logging / 配置 / 项目结构\n\n> **预计**:0.5 天 ｜ **前置**:Ch01 ｜ **M2 收官**\n> **目标**:把工程化基础打好——学会 `logging`(对比 Java logback)、用环境变量/`.env` 管配置、理解 `uv`+`pyproject.toml` 项目结构。为 M3 Web 框架铺路。\n\n> 📐 **本教程的契约**:§12.2–§12.4 对应作业。§12.5(项目结构)是配置类知识,讲透但不出 pytest 题。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `make_logger` | §12.2 | logging.getLogger + setLevel |\n| `log_event` | §12.2 | logger.log |\n| `get_config` | §12.4 | os.environ 环境变量 |\n| `read_env_file` | §12.4 | .env 文件解析 |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## §12.1 为什么用 logging 不用 print\n\n`print` 只能往屏幕输出,没法控制级别、没法写文件、没法分模块。`logging` 解决一切:\n\n```python\nimport logging\nlogging.warning(\"磁盘空间不足\")    # WARNING 级别\nlogging.info(\"任务完成\")           # INFO(默认不显示,要配置)\n```\n\n> 🟡 **Java 对比**:= `org.slf4j.Logger` / logback。Python logging 是标准库内置,不用引三方包。\n\n---\n\n## §12.2 logging 四要素(对应:`make_logger`、`log_event`)🟡\n\n理解这四个概念(和 logback 一一对应):\n\n| 概念 | 作用 | Java 对应 |\n|------|------|-----------|\n| **Logger** | 记录器,代码里调它 | `Logger` |\n| **Handler** | 输出到哪(控制台/文件) | `Appender` |\n| **Formatter** | 输出格式 | `PatternLayout` |\n| **Level** | 级别(DEBUG/INFO/WARNING/ERROR) | `Level` |\n\n### 级别(从低到高)\n\n```\nDEBUG(10) < INFO(20) < WARNING(30) < ERROR(40) < CRITICAL(50)\n```\n设了某个级别,只输出**不低于**它的日志。生产通常设 INFO,调试设 DEBUG。\n\n### 创建 logger\n\n```python\nimport logging\n\nlogger = logging.getLogger(\"myapp\")   # 按模块名命名(单例:同名返回同一个)\nlogger.setLevel(logging.INFO)         # 设级别\n```\n\n**关键特性**:\n- `getLogger(name)` 同名返回**同一个** logger(单例)——所以跨模块用 `getLogger(\"myapp\")` 拿到同一个,配置一次到处用。\n- logger 有**层级**:`getLogger(\"myapp.db\")` 是 `myapp` 的子 logger,继承父的配置。\n\n### 记录日志\n\n```python\nlogger.info(\"应用启动\")             # 便捷方法\nlogger.warning(\"磁盘 80%\")\nlogger.error(\"连接失败\", exc_info=True)   # exc_info 记录异常栈\nlogger.log(logging.INFO, \"消息\")    # 通用方法(本节作业)\n```\n\n> 本节作业 `log_event` 用通用的 `logger.log(level, message)`,level 作为参数(可传 INFO/WARNING/...)。\n\n> ✅ 做 `make_logger` 题:`logging.getLogger(name)` + `setLevel(level)`。\n> 做 `log_event` 题:`logger.log(level, message)`。\n\n---\n\n## §12.3 logging 进阶:Handler / Formatter(了解)\n\n默认 logger 只输出到控制台且格式简陋。生产要配置 Handler + Formatter:\n\n```python\nlogger = logging.getLogger(\"myapp\")\nlogger.setLevel(logging.DEBUG)\n\n# 控制台 handler\nconsole = logging.StreamHandler()\nconsole.setLevel(logging.INFO)\n\n# 文件 handler\nfile_handler = logging.FileHandler(\"app.log\", encoding=\"utf-8\")\nfile_handler.setLevel(logging.DEBUG)\n\n# 格式\nfmt = logging.Formatter(\"%(asctime)s [%(levelname)s] %(name)s: %(message)s\")\nconsole.setFormatter(fmt)\nfile_handler.setFormatter(fmt)\n\nlogger.addHandler(console)\nlogger.addHandler(file_handler)\n```\n\n正式项目通常把这段写进一个 `setup_logging()` 函数,或用 `logging.config.dictConfig`(配置文件,= logback.xml)。本章作业不要求,知道结构即可。\n\n---\n\n## §12.4 配置管理:环境变量 + .env(对应:`get_config`、`read_env_file`)🟡\n\n**铁律**:API key、数据库密码、端口等**绝不通进代码**,走配置。最常见两种:\n\n### ① 环境变量(`os.environ`)\n\n```python\nimport os\ndb_password = os.environ.get(\"DB_PASSWORD\", \"默认值\")   # 不存在返回默认\nport = os.environ.get(\"PORT\", \"8000\")\n```\n\n部署时 `DB_PASSWORD=xxx python app.py` 或 Docker/CI 注入。代码里只有 `getenv`,看不到明文密码。\n\n> 🟡 **Java 对比**:= Spring 的 `${DB_PASSWORD}` 占位符 + 环境变量注入。Python 直接 `os.environ.get`。\n\n### ② `.env` 文件(开发环境最方便)\n\n`.env` 文件(项目根,记得 `.gitignore`):\n```\nDB_HOST=localhost\nDB_PORT=5432\nAPI_KEY=sk-xxxx\n```\n\n- 生产用 `python-dotenv` 库自动加载:`load_dotenv()` 后,`.env` 里的键进入 `os.environ`,然后照常用 `os.environ.get`。\n- 本章作业 `read_env_file` 让你**手写解析**(理解原理,不依赖三方库)。\n\n> ✅ 做 `get_config` 题:`os.environ.get(key, default)`。\n> 做 `read_env_file` 题:逐行读,跳过空行/`#`注释,`split(\"=\", 1)` 拆键值。\n\n---\n\n## §12.5 项目结构:uv + pyproject.toml(配置类,讲透不出题)🔴\n\n这是 M3 前必须理解的工程化基础。\n\n### pyproject.toml = pom.xml\n\n本项目的 `pyproject.toml` 已经是标准结构(你看一眼):\n\n```toml\n[project]\nname = \"python-learning\"\ndependencies = [\"pytest>=8.0\", ...]          # 基础依赖\n\n[project.optional-dependencies]               # 可选依赖组\nweb = [\"fastapi>=0.110\", \"uvicorn\", ...]      # 学到 Web 章节再装\nai = [\"anthropic\", \"openai\", ...]\n\n[tool.pytest.ini_options]\ntestpaths = [\"01_python_core\", \"02_stdlib\", ...]   # pytest 测试目录\n```\n\n> 🟡 **Java 对比**:= `pom.xml`。`dependencies` = `<dependencies>`,`optional-dependencies` = Maven profiles(按需装)。`[tool.xxx]` 段是各工具配置(pytest/mypy/ruff),= Maven plugins。\n\n### uv:现代包管理(本项目在用)\n\n你前面一直在用的 `uv run pytest` 就是 uv。核心命令:\n\n```bash\nuv venv                    # 建虚拟环境\nuv add fastapi             # 装包并写进 pyproject(= mvn install + 改 pom)\nuv add --dev pytest        # 装到 dev 组\nuv sync                    # 按 pyproject + uv.lock 同步装全依赖\nuv run pytest              # 在项目环境里跑命令(自动激活虚拟环境)\n```\n\n> uv 的 `uv.lock` 锁定精确版本(= Maven 的锁版本),保证不同机器装出相同环境。\n\n### 标准项目布局(M3 会用到)\n\n```\nmyproject/\n├── pyproject.toml         # 项目配置(= pom.xml)\n├── uv.lock                # 依赖锁\n├── src/myproject/         # 源码(src layout,推荐)\n│   ├── __init__.py\n│   └── main.py\n├── tests/                 # 测试\n└── .env                   # 本地配置(gitignore)\n```\n\n本项目是「学习项目」,布局是按章节分目录(`01_python_core/` 等)。正式项目通常用上面的 `src` layout。M3 会演示。\n\n---\n\n## §12.6 Java 老手常踩的坑 ⚠️\n\n1. **`print` 调试 vs logging**:正式代码用 logging,print 只用于临时调试。print 没法关级别、没法写文件。\n2. **logger 是单例**:`getLogger(\"x\")` 多次调用返回同一个,配置一处生效。别 `Logger()` 构造(不存在)。\n3. **密码别进代码**:用环境变量/`.env`,且 `.env` 加进 `.gitignore`。\n4. **`.env` 不进 git**:里面是密钥,泄露了就完了。本项目 `.gitignore` 已含。\n5. **level 过滤是「不低于」**:设了 INFO,DEBUG 不显示。调试时临时改 DEBUG。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `make_logger` | logging.getLogger + setLevel | 🟢 |\n| `log_event` | logger.log | 🟢 |\n| `get_config` | os.environ 环境变量 | 🟢 |\n| `read_env_file` | .env 解析 | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch12/test_ch12_assignment.py -v\n```\n\n全绿 = 掌握 Ch12 = **M2 标准库毕业** 🎓。\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清 logging 的 logger/handler/formatter/level 四要素(§12.2)\n- [ ] 知道为什么配置要走环境变量/`.env` 而非写死在代码(§12.4)\n- [ ] 理解 pyproject.toml 和 uv.lock 的作用(§12.5)\n- [ ] 4 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「logging 的四要素各对应 Java logback 的什么?为什么别用 print?」— 重读 §12.1/§12.2\n2. 「为什么 API key 要走环境变量/`.env` 而不是写进代码?`.env` 为什么不进 git?」— 重读 §12.4\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步:M2 毕业,进入 M3\n\n恭喜!Ch08–Ch12 完成,Python **标准库**核心你已掌握(collections/itertools/正则/json/datetime/logging)。\n\n下一站 **M3 Web 框架 FastAPI**(Ch13–22):从「调 API」到「写 API」,搭一个带数据库、认证、测试的完整 RESTful 服务。这是你最初点名的核心方向之一。\n\n> 建议进 M3 前,先把 M1(Ch02–07)+ M2(Ch08–12)的费曼挑战和闪卡过一遍——语言和标准库的基础现在成体系了,M3 会大量用到。\n",
+  "assignment": "\"\"\"\nCh12 作业:现代工具链 —— logging / 配置 / .env。\n\n4 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch12/test_ch12_assignment.py -v\n\n全绿 = 你掌握了 Ch12 = M2 标准库毕业 🎓。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport logging\nimport os\nfrom pathlib import Path\n\n\n# ========== §12.2 logging ==========\n\n\ndef make_logger(name: str, level: int = logging.INFO) -> logging.Logger:\n    \"\"\"\n    【logging · §12.2】创建并配置一个 logger(设置日志级别)。\n\n    示例:\n        logger = make_logger(\"myapp\")\n        logger.level  -> logging.INFO(20)\n\n    思路:logging.getLogger(name) 获取(或创建)logger;logger.setLevel(level)。\n         同名多次 getLogger 返回同一个(logger 是单例)。\n    \"\"\"\n    # TODO: getLogger + setLevel + return\n    ...\n\n\ndef log_event(logger: logging.Logger, message: str, level: int = logging.INFO) -> None:\n    \"\"\"\n    【logging · §12.2】用 logger 记录一条日志(默认 INFO 级别)。\n\n    示例:\n        log_event(logger, \"应用启动\")\n\n    思路:logger.log(level, message)。level 可传 logging.WARNING / ERROR 等。\n    \"\"\"\n    # TODO: logger.log(level, message)\n    ...\n\n\n# ========== §12.4 配置:环境变量 ==========\n\n\ndef get_config(key: str, default=None):\n    \"\"\"\n    【环境变量 · §12.4】从环境变量读配置;不存在返回 default。\n\n    示例:\n        get_config(\"PORT\", \"8000\")   # 有 PORT 环境变量用之,否则 \"8000\"\n\n    思路:os.environ.get(key, default)。\n         生产配置(API key、数据库密码)绝不通进代码,走环境变量。\n    \"\"\"\n    # TODO: os.environ.get(key, default)\n    ...\n\n\n# ========== §12.4 配置:.env 文件解析 ==========\n\n\ndef read_env_file(path) -> dict:\n    \"\"\"\n    【.env · §12.4】解析简单的 .env 文件(KEY=VALUE),返回 dict。\n    规则:跳过空行和 # 注释;VALUE 支持包含 = 号(只切第一个 =)。\n\n    示例文件内容:\n        DB_HOST=localhost\n        DB_PORT=5432\n        # 这是注释\n        API_KEY=abc=def\n\n    思路:\n        for line in Path(path).read_text(encoding=\"utf-8\").splitlines():\n            line = line.strip()\n            跳过空行和 # 开头\n            if \"=\" in line: key, value = line.split(\"=\", 1); config[key.strip()] = value.strip()\n    \"\"\"\n    # TODO: 逐行解析,跳过注释/空行,split(\"=\", 1)\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    logger = make_logger(\"demo\")\n    log_event(logger, \"应用启动\")\n    print(\"PORT from env:\", get_config(\"PORT\", \"8000\"))\n",
+  "testName": "ch12_assignment",
+  "testSource": "\"\"\"\nCh12 作业测试。运行: uv run pytest 02_stdlib/ch12/test_ch12_assignment.py -v\n\"\"\"\nimport logging\n\nimport pytest\n\nfrom ch12_assignment import make_logger, log_event, get_config, read_env_file\n\n\n# ---------- make_logger:logging ----------\nclass TestMakeLogger:\n    def test_returns_logger(self):\n        assert isinstance(make_logger(\"t_basic\"), logging.Logger)\n\n    def test_default_level_info(self):\n        logger = make_logger(\"t_default\")\n        assert logger.level == logging.INFO\n\n    def test_custom_level(self):\n        logger = make_logger(\"t_debug\", level=logging.DEBUG)\n        assert logger.level == logging.DEBUG\n\n    def test_same_name_returns_same_logger(self):\n        # getLogger 同名返回同一个实例(单例)\n        a = make_logger(\"t_shared\")\n        b = make_logger(\"t_shared\")\n        assert a is b\n\n\n# ---------- log_event:logging 记录 ----------\nclass TestLogEvent:\n    def test_logs_info(self, caplog):\n        caplog.set_level(logging.INFO)\n        logger = make_logger(\"t_log_info\")\n        log_event(logger, \"hello world\")\n        assert \"hello world\" in caplog.text\n\n    def test_logs_at_given_level(self, caplog):\n        caplog.set_level(logging.WARNING)\n        logger = make_logger(\"t_log_warn\")\n        log_event(logger, \"something wrong\", level=logging.WARNING)\n        assert \"something wrong\" in caplog.text\n        # 记录确实是 WARNING 级别\n        assert any(r.levelno == logging.WARNING for r in caplog.records)\n\n\n# ---------- get_config:环境变量 ----------\nclass TestGetConfig:\n    def test_reads_existing_env(self, monkeypatch):\n        monkeypatch.setenv(\"CH12_TEST_KEY\", \"abc123\")\n        assert get_config(\"CH12_TEST_KEY\") == \"abc123\"\n\n    def test_default_when_missing(self):\n        assert get_config(\"CH12_NOPE_NOT_SET\", \"fallback\") == \"fallback\"\n\n    def test_default_none(self):\n        assert get_config(\"CH12_NOPE_NOT_SET\") is None\n\n\n# ---------- read_env_file:.env 解析 ----------\nclass TestReadEnvFile:\n    def test_parses_key_value(self, tmp_path):\n        f = tmp_path / \".env\"\n        f.write_text(\"DB_HOST=localhost\\nDB_PORT=5432\\nAPI_KEY=secret\", encoding=\"utf-8\")\n        cfg = read_env_file(f)\n        assert cfg == {\"DB_HOST\": \"localhost\", \"DB_PORT\": \"5432\", \"API_KEY\": \"secret\"}\n\n    def test_skips_comments_and_blanks(self, tmp_path):\n        f = tmp_path / \".env\"\n        f.write_text(\"# a comment\\n\\n   \\nA=1\", encoding=\"utf-8\")\n        assert read_env_file(f) == {\"A\": \"1\"}\n\n    def test_strips_whitespace(self, tmp_path):\n        f = tmp_path / \".env\"\n        f.write_text(\"KEY = value \", encoding=\"utf-8\")\n        assert read_env_file(f) == {\"KEY\": \"value\"}\n\n    def test_value_can_contain_equals(self, tmp_path):\n        # 只切第一个 =,所以 value 里的 = 保留\n        f = tmp_path / \".env\"\n        f.write_text(\"URL=host=db;user=admin\", encoding=\"utf-8\")\n        assert read_env_file(f)[\"URL\"] == \"host=db;user=admin\"\n\n    def test_values_are_strings(self, tmp_path):\n        f = tmp_path / \".env\"\n        f.write_text(\"PORT=8000\\nDEBUG=true\", encoding=\"utf-8\")\n        cfg = read_env_file(f)\n        assert cfg[\"PORT\"] == \"8000\"   # 字符串,不是 int\n        assert cfg[\"DEBUG\"] == \"true\"  # 字符串,不是 bool\n",
+  "reviewMd": "# Ch12 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | logging 四要素?各对应 Java logback 什么? | Logger(记录器)+ Handler(输出目标=Appender)+ Formatter(格式=Layout)+ Level(级别)。Python logging 标准库内置,不用三方包 | ⬜ |\n| 2 | 日志级别从低到高?设了 INFO 还能看到什么? | DEBUG(10)<INFO(20)<WARNING(30)<ERROR(40)<CRITICAL(50)。设了 INFO 只看到【不低于】INFO 的,DEBUG 被过滤 | ⬜ |\n| 3 | `logging.getLogger(name)` 的关键特性? | 【单例】:同名返回同一个 logger。所以跨模块用同名 getLogger 拿到同一个,配置一次到处用。还有父子层级(子 logger 继承父配置) | ⬜ |\n| 4 | 为什么配置走环境变量/`.env` 而非写进代码? | API key/密码/端口等敏感+环境相关的东西,写进代码会泄露且无法区分 dev/prod。环境变量部署时注入,`.env` 开发本地(且【不进 git】) | ⬜ |\n| 5 | `pyproject.toml` 和 `uv.lock` 各是什么?对应 Java 什么? | pyproject.toml = pom.xml(项目配置+依赖);uv.lock = 锁定精确版本,保证不同机器环境一致。`uv run`/`uv add`/`uv sync` 管理它们 | ⬜ |\n| 6 | print 和 logging 怎么选? | 正式代码用 logging(可控制级别、写文件、分模块)。print 只用于临时调试,没法关级别/写文件 | ⬜ |\n| 7 | `.env` 文件解析要注意什么? | 跳过空行和 `#` 注释;`split(\"=\", 1)` 只切第一个等号(value 可含 =);值都是字符串(8ooo 是 \"8000\" 不是 int) | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「logging 四要素 vs logback,为何别用 print」?\n- [ ] 能说清「配置为何走环境变量,`.env` 为何不进 git」?\n- [ ] 能说清「pyproject.toml + uv.lock 的作用」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": true,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch01 ｜ **M2 收官**\n> **目标**:把工程化基础打好——学会 `logging`(对比 Java logback)、用环境变量/`.env` 管配置、理解 `uv`+`pyproject.toml` 项目结构。为 M3 Web 框架铺路。\n\n> 📐 **本教程的契约**:§12.2–§12.4 对应作业。§12.5(项目结构)是配置类知识,讲透但不出 pytest 题。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `make_logger` | §12.2 | logging.getLogger + setLevel |\n| `log_event` | §12.2 | logger.log |\n| `get_config` | §12.4 | os.environ 环境变量 |\n| `read_env_file` | §12.4 | .env 文件解析 |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-12.1",
+      "heading": "§12.1 为什么用 logging 不用 print",
+      "secNum": "12.1",
+      "body": "`print` 只能往屏幕输出,没法控制级别、没法写文件、没法分模块。`logging` 解决一切:\n\n```python\nimport logging\nlogging.warning(\"磁盘空间不足\")    # WARNING 级别\nlogging.info(\"任务完成\")           # INFO(默认不显示,要配置)\n```\n\n> 🟡 **Java 对比**:= `org.slf4j.Logger` / logback。Python logging 是标准库内置,不用引三方包。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-12.2",
+      "heading": "§12.2 logging 四要素(对应:`make_logger`、`log_event`)🟡",
+      "secNum": "12.2",
+      "body": "理解这四个概念(和 logback 一一对应):\n\n| 概念 | 作用 | Java 对应 |\n|------|------|-----------|\n| **Logger** | 记录器,代码里调它 | `Logger` |\n| **Handler** | 输出到哪(控制台/文件) | `Appender` |\n| **Formatter** | 输出格式 | `PatternLayout` |\n| **Level** | 级别(DEBUG/INFO/WARNING/ERROR) | `Level` |\n\n### 级别(从低到高)\n\n```\nDEBUG(10) < INFO(20) < WARNING(30) < ERROR(40) < CRITICAL(50)\n```\n设了某个级别,只输出**不低于**它的日志。生产通常设 INFO,调试设 DEBUG。\n\n### 创建 logger\n\n```python\nimport logging\n\nlogger = logging.getLogger(\"myapp\")   # 按模块名命名(单例:同名返回同一个)\nlogger.setLevel(logging.INFO)         # 设级别\n```\n\n**关键特性**:\n- `getLogger(name)` 同名返回**同一个** logger(单例)——所以跨模块用 `getLogger(\"myapp\")` 拿到同一个,配置一次到处用。\n- logger 有**层级**:`getLogger(\"myapp.db\")` 是 `myapp` 的子 logger,继承父的配置。\n\n### 记录日志\n\n```python\nlogger.info(\"应用启动\")             # 便捷方法\nlogger.warning(\"磁盘 80%\")\nlogger.error(\"连接失败\", exc_info=True)   # exc_info 记录异常栈\nlogger.log(logging.INFO, \"消息\")    # 通用方法(本节作业)\n```\n\n> 本节作业 `log_event` 用通用的 `logger.log(level, message)`,level 作为参数(可传 INFO/WARNING/...)。\n\n> ✅ 做 `make_logger` 题:`logging.getLogger(name)` + `setLevel(level)`。\n> 做 `log_event` 题:`logger.log(level, message)`。\n\n---",
+      "exerciseFunctions": [
+        "make_logger",
+        "log_event"
+      ]
+    },
+    {
+      "id": "sec-12.3",
+      "heading": "§12.3 logging 进阶:Handler / Formatter(了解)",
+      "secNum": "12.3",
+      "body": "默认 logger 只输出到控制台且格式简陋。生产要配置 Handler + Formatter:\n\n```python\nlogger = logging.getLogger(\"myapp\")\nlogger.setLevel(logging.DEBUG)\n\n# 控制台 handler\nconsole = logging.StreamHandler()\nconsole.setLevel(logging.INFO)\n\n# 文件 handler\nfile_handler = logging.FileHandler(\"app.log\", encoding=\"utf-8\")\nfile_handler.setLevel(logging.DEBUG)\n\n# 格式\nfmt = logging.Formatter(\"%(asctime)s [%(levelname)s] %(name)s: %(message)s\")\nconsole.setFormatter(fmt)\nfile_handler.setFormatter(fmt)\n\nlogger.addHandler(console)\nlogger.addHandler(file_handler)\n```\n\n正式项目通常把这段写进一个 `setup_logging()` 函数,或用 `logging.config.dictConfig`(配置文件,= logback.xml)。本章作业不要求,知道结构即可。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-12.4",
+      "heading": "§12.4 配置管理:环境变量 + .env(对应:`get_config`、`read_env_file`)🟡",
+      "secNum": "12.4",
+      "body": "**铁律**:API key、数据库密码、端口等**绝不通进代码**,走配置。最常见两种:\n\n### ① 环境变量(`os.environ`)\n\n```python\nimport os\ndb_password = os.environ.get(\"DB_PASSWORD\", \"默认值\")   # 不存在返回默认\nport = os.environ.get(\"PORT\", \"8000\")\n```\n\n部署时 `DB_PASSWORD=xxx python app.py` 或 Docker/CI 注入。代码里只有 `getenv`,看不到明文密码。\n\n> 🟡 **Java 对比**:= Spring 的 `${DB_PASSWORD}` 占位符 + 环境变量注入。Python 直接 `os.environ.get`。\n\n### ② `.env` 文件(开发环境最方便)\n\n`.env` 文件(项目根,记得 `.gitignore`):\n```\nDB_HOST=localhost\nDB_PORT=5432\nAPI_KEY=sk-xxxx\n```\n\n- 生产用 `python-dotenv` 库自动加载:`load_dotenv()` 后,`.env` 里的键进入 `os.environ`,然后照常用 `os.environ.get`。\n- 本章作业 `read_env_file` 让你**手写解析**(理解原理,不依赖三方库)。\n\n> ✅ 做 `get_config` 题:`os.environ.get(key, default)`。\n> 做 `read_env_file` 题:逐行读,跳过空行/`#`注释,`split(\"=\", 1)` 拆键值。\n\n---",
+      "exerciseFunctions": [
+        "get_config",
+        "read_env_file"
+      ]
+    },
+    {
+      "id": "sec-12.5",
+      "heading": "§12.5 项目结构:uv + pyproject.toml(配置类,讲透不出题)🔴",
+      "secNum": "12.5",
+      "body": "这是 M3 前必须理解的工程化基础。\n\n### pyproject.toml = pom.xml\n\n本项目的 `pyproject.toml` 已经是标准结构(你看一眼):\n\n```toml\n[project]\nname = \"python-learning\"\ndependencies = [\"pytest>=8.0\", ...]          # 基础依赖\n\n[project.optional-dependencies]               # 可选依赖组\nweb = [\"fastapi>=0.110\", \"uvicorn\", ...]      # 学到 Web 章节再装\nai = [\"anthropic\", \"openai\", ...]\n\n[tool.pytest.ini_options]\ntestpaths = [\"01_python_core\", \"02_stdlib\", ...]   # pytest 测试目录\n```\n\n> 🟡 **Java 对比**:= `pom.xml`。`dependencies` = `<dependencies>`,`optional-dependencies` = Maven profiles(按需装)。`[tool.xxx]` 段是各工具配置(pytest/mypy/ruff),= Maven plugins。\n\n### uv:现代包管理(本项目在用)\n\n你前面一直在用的 `uv run pytest` 就是 uv。核心命令:\n\n```bash\nuv venv                    # 建虚拟环境\nuv add fastapi             # 装包并写进 pyproject(= mvn install + 改 pom)\nuv add --dev pytest        # 装到 dev 组\nuv sync                    # 按 pyproject + uv.lock 同步装全依赖\nuv run pytest              # 在项目环境里跑命令(自动激活虚拟环境)\n```\n\n> uv 的 `uv.lock` 锁定精确版本(= Maven 的锁版本),保证不同机器装出相同环境。\n\n### 标准项目布局(M3 会用到)\n\n```\nmyproject/\n├── pyproject.toml         # 项目配置(= pom.xml)\n├── uv.lock                # 依赖锁\n├── src/myproject/         # 源码(src layout,推荐)\n│   ├── __init__.py\n│   └── main.py\n├── tests/                 # 测试\n└── .env                   # 本地配置(gitignore)\n```\n\n本项目是「学习项目」,布局是按章节分目录(`01_python_core/` 等)。正式项目通常用上面的 `src` layout。M3 会演示。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-12.6",
+      "heading": "§12.6 Java 老手常踩的坑 ⚠️",
+      "secNum": "12.6",
+      "body": "1. **`print` 调试 vs logging**:正式代码用 logging,print 只用于临时调试。print 没法关级别、没法写文件。\n2. **logger 是单例**:`getLogger(\"x\")` 多次调用返回同一个,配置一处生效。别 `Logger()` 构造(不存在)。\n3. **密码别进代码**:用环境变量/`.env`,且 `.env` 加进 `.gitignore`。\n4. **`.env` 不进 git**:里面是密钥,泄露了就完了。本项目 `.gitignore` 已含。\n5. **level 过滤是「不低于」**:设了 INFO,DEBUG 不显示。调试时临时改 DEBUG。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `make_logger` | logging.getLogger + setLevel | 🟢 |\n| `log_event` | logger.log | 🟢 |\n| `get_config` | os.environ 环境变量 | 🟢 |\n| `read_env_file` | .env 解析 | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch12/test_ch12_assignment.py -v\n```\n\n全绿 = 掌握 Ch12 = **M2 标准库毕业** 🎓。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清 logging 的 logger/handler/formatter/level 四要素(§12.2)\n- [ ] 知道为什么配置要走环境变量/`.env` 而非写死在代码(§12.4)\n- [ ] 理解 pyproject.toml 和 uv.lock 的作用(§12.5)\n- [ ] 4 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「logging 的四要素各对应 Java logback 的什么?为什么别用 print?」— 重读 §12.1/§12.2\n2. 「为什么 API key 要走环境变量/`.env` 而不是写进代码?`.env` 为什么不进 git?」— 重读 §12.4",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步-M2-毕业-进入-M3",
+      "heading": "⏭️ 下一步:M2 毕业,进入 M3",
+      "secNum": null,
+      "body": "恭喜!Ch08–Ch12 完成,Python **标准库**核心你已掌握(collections/itertools/正则/json/datetime/logging)。\n\n下一站 **M3 Web 框架 FastAPI**(Ch13–22):从「调 API」到「写 API」,搭一个带数据库、认证、测试的完整 RESTful 服务。这是你最初点名的核心方向之一。\n\n> 建议进 M3 前,先把 M1(Ch02–07)+ M2(Ch08–12)的费曼挑战和闪卡过一遍——语言和标准库的基础现在成体系了,M3 会大量用到。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "make_logger",
+      "testClass": "TestMakeLogger",
+      "skeleton": "def make_logger(name: str, level: int = logging.INFO) -> logging.Logger:\n    \"\"\"\n    【logging · §12.2】创建并配置一个 logger(设置日志级别)。\n\n    示例:\n        logger = make_logger(\"myapp\")\n        logger.level  -> logging.INFO(20)\n\n    思路:logging.getLogger(name) 获取(或创建)logger;logger.setLevel(level)。\n         同名多次 getLogger 返回同一个(logger 是单例)。\n    \"\"\"\n    # TODO: getLogger + setLevel + return\n    ..."
+    },
+    {
+      "name": "log_event",
+      "testClass": "TestLogEvent",
+      "skeleton": "def log_event(logger: logging.Logger, message: str, level: int = logging.INFO) -> None:\n    \"\"\"\n    【logging · §12.2】用 logger 记录一条日志(默认 INFO 级别)。\n\n    示例:\n        log_event(logger, \"应用启动\")\n\n    思路:logger.log(level, message)。level 可传 logging.WARNING / ERROR 等。\n    \"\"\"\n    # TODO: logger.log(level, message)\n    ..."
+    },
+    {
+      "name": "get_config",
+      "testClass": "TestGetConfig",
+      "skeleton": "def get_config(key: str, default=None):\n    \"\"\"\n    【环境变量 · §12.4】从环境变量读配置;不存在返回 default。\n\n    示例:\n        get_config(\"PORT\", \"8000\")   # 有 PORT 环境变量用之,否则 \"8000\"\n\n    思路:os.environ.get(key, default)。\n         生产配置(API key、数据库密码)绝不通进代码,走环境变量。\n    \"\"\"\n    # TODO: os.environ.get(key, default)\n    ..."
+    },
+    {
+      "name": "read_env_file",
+      "testClass": "TestReadEnvFile",
+      "skeleton": "def read_env_file(path) -> dict:\n    \"\"\"\n    【.env · §12.4】解析简单的 .env 文件(KEY=VALUE),返回 dict。\n    规则:跳过空行和 # 注释;VALUE 支持包含 = 号(只切第一个 =)。\n\n    示例文件内容:\n        DB_HOST=localhost\n        DB_PORT=5432\n        # 这是注释\n        API_KEY=abc=def\n\n    思路:\n        for line in Path(path).read_text(encoding=\"utf-8\").splitlines():\n            line = line.strip()\n            跳过空行和 # 开头\n            if \"=\" in line: key, value = line.split(\"=\", 1); config[key.strip()] = value.strip()\n    \"\"\"\n    # TODO: 逐行解析,跳过注释/空行,split(\"=\", 1)\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh12 作业:现代工具链 —— logging / 配置 / .env。\n\n4 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch12/test_ch12_assignment.py -v\n\n全绿 = 你掌握了 Ch12 = M2 标准库毕业 🎓。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport logging\nimport os\nfrom pathlib import Path\n\n\n# ========== §12.2 logging ==========\n\n\n# ========== §12.4 配置:环境变量 ==========\n\n\n# ========== §12.4 配置:.env 文件解析 ==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    logger = make_logger(\"demo\")\n    log_event(logger, \"应用启动\")\n    print(\"PORT from env:\", get_config(\"PORT\", \"8000\"))"
+}

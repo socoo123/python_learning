@@ -1,0 +1,149 @@
+{
+  "id": "ch17",
+  "num": "17",
+  "title": "中间件、CORS、异常处理",
+  "runMode": "local",
+  "tutorialMd": "# Ch17 · 中间件、CORS、异常处理\n\n> **预计**:0.5 天 ｜ **前置**:Ch16 ｜ **M3 第一批(Ch13–17)收尾**\n> **目标**:掌握 FastAPI 的三类工程化能力——**中间件**(= Servlet Filter)、**全局异常处理**(= `@ControllerAdvice`)、**CORS** 跨域。这是 API 上生产的基础。\n\n> 📐 **本教程的契约**:§17.1–§17.3 对应作业三处填空。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `log_requests`(中间件) | §17.1 | @app.middleware + call_next(洋葱模型) |\n| `handle_not_found`(异常处理器) | §17.2 | @app.exception_handler → 统一错误格式 |\n| `get_product`(抛业务异常) | §17.3 | raise 自定义异常 → 被处理器映射 |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45-60 分钟)\n\n① 预览猜 → ② 填三处实现 → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. Spring 用 `Filter` / `HandlerInterceptor` 在请求前后做横切(日志/鉴权/计时)。FastAPI 对应什么?\n2. Spring 用 `@ControllerAdvice` + `@ExceptionHandler` 统一处理异常。FastAPI 怎么注册异常处理器?\n3. 前端跨域报 CORS 错,后端怎么放行?\n4. 中间件在请求进/出各执行一次,这个「套娃」结构叫什么模型?\n\n---\n\n## §17.1 中间件:洋葱模型(对应:`log_requests`)🔴\n\n中间件在**每个请求**前后执行,用于横切关注点(日志、计时、鉴权、CORS)。结构是**洋葱**——请求层层进入、响应层层出来:\n\n```python\n@app.middleware(\"http\")\nasync def log_requests(request: Request, call_next):\n    # —— 请求进来时执行(call_next 之前)——\n    start = time.time()\n    response = await call_next(request)     # 放行:交给下一层中间件/路由\n    # —— 响应出来时执行(call_next 之后)——\n    duration_ms = (time.time() - start) * 1000\n    response.headers[\"X-Process-Time-ms\"] = f\"{duration_ms:.2f}\"\n    return response\n```\n\n**三个关键点**:\n- `call_next(request)` 是「放行」——把请求交给下一层(最终到路由)。`call_next` 是 async,必须 `await`(Ch18 异步详讲)。\n- `call_next` 返回 `response`,你可以在返回前**修改它**(这里加了个响应头)。\n- `call_next` **之前**的代码 = 请求进入时跑;**之后**的代码 = 响应出来时跑。这就是洋葱。\n\n> 🟡 **Java 对比**:= Servlet `Filter` / Spring `HandlerInterceptor`。`doFilter`/`proceed` 对应 `call_next`。FastAPI 一个装饰器 + 函数搞定,比 Java 的 Filter 接口简洁。\n\n### 多个中间件的顺序\n\n注册多个中间件时,**后注册的先执行**(洋葱最外层)。中间件包着中间件,最里面是路由。\n\n> ✅ 做 `log_requests` 题:`start` → `await call_next` → 算耗时 → 加 header → `return response`。\n\n---\n\n## §17.2 全局异常处理:统一错误格式(对应:`handle_not_found`)🔴\n\n**问题**:业务代码里 `raise NotFoundError(...)`,你希望它自动变成「404 + 统一 JSON 格式」,而不是让用户看到 500 或 FastAPI 默认错误体。\n\n**解法**:`@app.exception_handler(异常类型)` 注册处理器:\n\n```python\nfrom fastapi.responses import JSONResponse\n\n@app.exception_handler(NotFoundError)\ndef handle_not_found(request: Request, exc: NotFoundError):\n    # exc 是抛出的异常实例;request 是请求对象\n    return JSONResponse(\n        status_code=404,\n        content={\"error\": \"NotFound\", \"message\": f\"{exc.resource} {exc.id} 不存在\"},\n    )\n\n# 业务代码里\n@app.get(\"/products/{id}\")\ndef get_product(id: int):\n    if id not in PRODUCTS:\n        raise NotFoundError(\"Product\", id)   # 抛出 → 被上面的处理器接住 → 返 404\n    return PRODUCTS[id]\n```\n\n**好处**:\n- 业务代码只管 `raise`(干净),不用每处手写 `JSONResponse(404)`。\n- 错误格式**统一**(所有 NotFoundError 都返 `{\"error\":\"NotFound\",\"message\":...}`),前端好处理。\n\n> 🤯 **Java 对比**:= `@ControllerAdvice` + `@ExceptionHandler(NotFoundError.class)`。FastAPI 一个装饰器搞定。这是生产 API 的标配——所有业务异常统一格式,前端只认一套错误结构。\n\n> ✅ 做 `handle_not_found` 题:返回 `JSONResponse(404, {\"error\":\"NotFound\",\"message\":...})`。\n\n---\n\n## §17.3 自定义业务异常(对应:`get_product`)\n\n定义业务异常(继承 Exception),在端点里 raise,处理器自动映射:\n\n```python\nclass NotFoundError(Exception):\n    def __init__(self, resource, id):\n        self.resource = resource\n        self.id = id\n\n@app.get(\"/products/{id}\")\ndef get_product(id: int):\n    if id not in PRODUCTS:\n        raise NotFoundError(\"Product\", id)   # 自动被 §17.2 的处理器映射成 404\n    return PRODUCTS[id]\n```\n\n> 业务异常是「**业务规则违反**」(资源不存在、库存不足、权限不够),和「**程序 bug**」(ValueError、KeyError)区分开。前者映射成 4xx,后者是 500。\n\n> ✅ 做 `get_product` 题:不存在 `raise NotFoundError(...)`,否则返回。\n\n---\n\n## §17.4 CORS:跨域资源共享\n\n浏览器有同源策略:前端 `http://localhost:3000` 调后端 `http://localhost:8000` 会被拦。后端配 CORS 放行:\n\n```python\nfrom fastapi.middleware.cors import CORSMiddleware\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"http://localhost:3000\"],   # 允许的前端域名(生产别用 *)\n    allow_methods=[\"*\"],                        # 允许的 HTTP 方法\n    allow_headers=[\"*\"],                        # 允许的请求头\n    allow_credentials=True,                     # 允许带 cookie\n)\n```\n\n> 🟡 **Java 对比**:= Spring `@CrossOrigin` / `CorsFilter` / WebMvcConfigurer。FastAPI 一个 add_middleware 搞定。\n>\n> ⚠️ `allow_origins=[\"*\"]` + `allow_credentials=True` 不能同时用(浏览器拒绝)。生产环境一定要限定具体域名,别用 `*`。\n\n---\n\n## §17.5 未处理的异常 = 500\n\n业务代码抛了**没注册处理器**的异常(如 `ValueError`),FastAPI 返 **500 Internal Server Error**。生产环境应该:\n- 注册一个兜底的 `Exception` 处理器,把 500 也格式化、记日志(不暴露堆栈给用户)。\n- 用 Ch12 的 logging 记录完整异常栈。\n\n```python\n@app.exception_handler(Exception)         # 兜底所有异常\ndef handle_all(request, exc):\n    logger.exception(\"未处理异常\")         # 记日志\n    return JSONResponse(500, {\"error\": \"InternalServerError\", \"message\": \"服务内部错误\"})\n```\n\n---\n\n## §17.6 速查:Java 横切机制对照\n\n| FastAPI | Java 对应 | 用途 |\n|---------|-----------|------|\n| `@app.middleware(\"http\")` | Servlet Filter / Interceptor | 请求前后横切(日志/计时) |\n| `@app.exception_handler(X)` | @ControllerAdvice + @ExceptionHandler | 异常 → HTTP 响应 |\n| `add_middleware(CORSMiddleware)` | @CrossOrigin / CorsFilter | 跨域 |\n| `Depends`(Ch16) | @Autowired | 依赖注入 |\n\n---\n\n## §17.7 Java 老手常踩的坑 ⚠️\n\n1. **`call_next` 必须 `await`**:它是 async,忘 await 会得到协程对象而非响应。\n2. **中间件顺序**:后注册先执行(洋葱外层)。顺序错了可能影响行为(如鉴权要在日志前)。\n3. **CORS `*` + credentials 冲突**:浏览器不允许,二选一。生产限定域名。\n4. **业务异常 vs 程序异常**:业务异常(4xx)用自定义异常 + 处理器;程序异常(500)兜底处理 + 记日志。\n5. **异常处理器没注册就 raise**:NotFoundError 没 handler 就是 500(被当普通异常)。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `log_requests` | 中间件(洋葱模型) | 🟡 |\n| `handle_not_found` | 全局异常处理 | 🟡 |\n| `get_product` | 抛业务异常 | 🟢 |\n\n```bash\nuv run pytest 03_web_framework/ch17/test_ch17_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清中间件的「洋葱模型」(call_next 前后各执行一次)\n- [ ] 能用 `@app.exception_handler` 把业务异常映射成统一格式的 HTTP 响应\n- [ ] 知道 CORS 怎么配,以及 `*` + credentials 的坑\n- [ ] 3 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「中间件的洋葱模型是什么?call_next 前后的代码分别在何时执行?」— 重读 §17.1\n2. 「为什么用自定义异常 + 全局处理器,而不是每处手写 JSONResponse(404)?」— 重读 §17.2/§17.3\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步:M3 第一批(Ch13–17)收尾\n\nCh13–17 学完,你掌握了 FastAPI 的**基础全貌**:调 API(httpx)→ 写 API(FastAPI + Pydantic)→ 参数(路由/查询/分页)→ 依赖注入 → 中间件/异常/CORS。\n\n下一批 **Ch18–22**(你说一声我就写):\n- **Ch18** 异步 async/await(Ch18 重点,Python 和 Java 最大差异之一)\n- **Ch19** SQLAlchemy 数据库 ORM(接真 DB,告别内存存储)\n- **Ch20** 测试 API(TestClient 进阶 + fixtures + 覆盖率)\n- **Ch21** JWT 认证授权\n- **Ch22** 部署(uvicorn/gunicorn/Docker)+ Flask/Django 对比\n\n学完 Ch18–22,你就能做**考试系统 lab** 了。\n",
+  "assignment": "\"\"\"\nCh17 作业:中间件、CORS、全局异常处理。\n\nCORS 配置 + NotFoundError 定义已给。你填三处:① 计时中间件 ② 异常处理器 ③ 端点抛业务异常。\n\n    uv run pytest 03_web_framework/ch17/test_ch17_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport time\n\nfrom fastapi import FastAPI, Request\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.responses import JSONResponse\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"中间件与异常演示\")\n\n\n# ---------- CORS 中间件(已配好,了解即可)----------\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n\n# ---------- 自定义业务异常(已定义)----------\nclass NotFoundError(Exception):\n    \"\"\"资源不存在的业务异常。会被全局处理器映射成 404。\"\"\"\n    def __init__(self, resource: str, id: int):\n        self.resource = resource\n        self.id = id\n\n\n# ---------- 全局异常处理器(你填)----------\n\n\n# TODO: 注册 NotFoundError 的异常处理器,返回统一格式的 404 JSON\n@app.exception_handler(NotFoundError)\ndef handle_not_found(request: Request, exc: NotFoundError):\n    \"\"\"\n    【全局异常处理 · §17.2】把 NotFoundError 映射成 404 + 统一错误格式。\n\n    思路:return JSONResponse(\n        status_code=404,\n        content={\"error\": \"NotFound\", \"message\": f\"{exc.resource} {exc.id} 不存在\"},\n    )\n    \"\"\"\n    # TODO: 返回 JSONResponse(404, {\"error\":\"NotFound\", \"message\":...})\n    ...\n\n\n# ---------- 计时中间件(你填)----------\n\n\n@app.middleware(\"http\")\nasync def log_requests(request: Request, call_next):\n    \"\"\"\n    【中间件 · §17.1】给每个请求计时,在响应头加 X-Process-Time-ms。\n\n    思路(洋葱模型:进来记时 → call_next 放行 → 出来算耗时 → 改响应头):\n        start = time.time()\n        response = await call_next(request)              # 放行(call_next 是 async,要 await)\n        duration_ms = (time.time() - start) * 1000\n        response.headers[\"X-Process-Time-ms\"] = f\"{duration_ms:.2f}\"\n        return response\n    \"\"\"\n    # TODO: 记时 → await call_next → 算耗时 → 加响应头 → return response\n    ...\n\n\n# ---------- 数据 + 端点 ----------\nclass Product(BaseModel):\n    id: int\n    name: str\n\n\nPRODUCTS: dict[int, Product] = {\n    1: Product(id=1, name=\"机械键盘\"),\n    2: Product(id=2, name=\"无线鼠标\"),\n}\n\n\n@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【端点抛业务异常 · §17.3】不存在时 raise NotFoundError(被全局处理器接住,映射 404)。\n\n    思路:if product_id not in PRODUCTS: raise NotFoundError(\"Product\", product_id)\n         return PRODUCTS[product_id]\n    \"\"\"\n    # TODO: 不存在 raise NotFoundError;否则返回\n    ...\n\n\n@app.get(\"/error\")\ndef trigger_error():\n    raise ValueError(\"故意出错\")          # 未注册处理器的异常 → 500\n\n\n@app.get(\"/health\")\ndef health():\n    return {\"status\": \"ok\"}\n",
+  "testName": "ch17_assignment",
+  "testSource": "\"\"\"\nCh17 作业测试。运行: uv run pytest 03_web_framework/ch17/test_ch17_assignment.py -v\n\"\"\"\nfrom fastapi.testclient import TestClient\n\nfrom ch17_assignment import app\n\nclient = TestClient(app)\n\n\n# ---------- 全局异常处理 ----------\nclass TestExceptionHandling:\n    def test_not_found_mapped_to_404(self):\n        # NotFoundError 被全局处理器映射成 404 + 统一格式\n        resp = client.get(\"/products/999\")\n        assert resp.status_code == 404\n        body = resp.json()\n        assert body[\"error\"] == \"NotFound\"\n        assert \"999\" in body[\"message\"]\n\n    def test_existing_product_ok(self):\n        resp = client.get(\"/products/1\")\n        assert resp.status_code == 200\n        assert resp.json()[\"name\"] == \"机械键盘\"\n\n    def test_unhandled_exception_returns_500(self):\n        # ValueError 没注册处理器 → 500。需关闭 TestClient 的「服务端异常重抛」\n        c = TestClient(app, raise_server_exceptions=False)\n        assert c.get(\"/error\").status_code == 500\n\n\n# ---------- 中间件 ----------\nclass TestMiddleware:\n    def test_process_time_header_added(self):\n        # log_requests 中间件给每个响应加 X-Process-Time-ms\n        resp = client.get(\"/health\")\n        assert resp.status_code == 200\n        # headers 大小写不敏感\n        assert \"x-process-time-ms\" in resp.headers\n\n    def test_middleware_runs_for_all_routes(self):\n        resp1 = client.get(\"/health\")\n        resp2 = client.get(\"/products/1\")\n        assert \"x-process-time-ms\" in resp1.headers\n        assert \"x-process-time-ms\" in resp2.headers\n\n\n# ---------- CORS ----------\nclass TestCORS:\n    def test_allow_origin_header(self):\n        # 带 Origin 请求 → CORS 中间件加 Access-Control-Allow-Origin\n        resp = client.get(\"/health\", headers={\"Origin\": \"http://example.com\"})\n        assert resp.headers.get(\"access-control-allow-origin\") == \"*\"\n\n    def test_cors_preflight(self):\n        # 预检请求(OPTIONS)\n        resp = client.options(\n            \"/health\",\n            headers={\n                \"Origin\": \"http://example.com\",\n                \"Access-Control-Request-Method\": \"GET\",\n            },\n        )\n        assert resp.status_code == 200\n        assert resp.headers.get(\"access-control-allow-origin\") == \"*\"\n\n\n# ---------- health ----------\nclass TestHealth:\n    def test_health_ok(self):\n        assert client.get(\"/health\").json() == {\"status\": \"ok\"}\n",
+  "reviewMd": "# Ch17 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | 中间件的「洋葱模型」是什么?call_next 前后各在何时执行? | 请求层层进、响应层层出。`call_next` 前 = 请求进入时跑;`await call_next` 放行;后 = 响应出来时跑。= Java Filter/Interceptor | ⬜ |\n| 2 | `call_next` 为什么必须 `await`? | 它是 async(返回协程)。忘 await 得到协程对象而非 response。Ch18 异步详讲 | ⬜ |\n| 3 | `@app.exception_handler(NotFoundError)` 干嘛?对应 Java? | 注册异常处理器:业务代码 raise NotFoundError → 自动被处理器接住 → 返统一格式 HTTP 响应。= Spring @ControllerAdvice + @ExceptionHandler | ⬜ |\n| 4 | 业务异常(自定义)和程序异常(ValueError)怎么区分处理? | 业务异常(资源不存在/权限不足等业务规则)→ 4xx + 自定义处理器;程序异常(bug)→ 500 + 兜底处理器 + 记日志 | ⬜ |\n| 5 | CORS 怎么配?`allow_origins=[\"*\"]` 有什么坑? | `app.add_middleware(CORSMiddleware, allow_origins=..., allow_methods=..., allow_headers=...)`。坑:`*` + `allow_credentials=True` 浏览器拒绝;生产限定具体域名 | ⬜ |\n| 6 | 未注册处理器的异常返回什么? | **500** Internal Server Error。生产应注册兜底 Exception 处理器,格式化 + 记日志 + 不暴露堆栈 | ⬜ |\n| 7 | 多个中间件的执行顺序? | 【后注册先执行】(洋葱最外层)。鉴权类要早注册(外层),保证在业务前拦 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「洋葱模型 + call_next 时机」?\n- [ ] 能说清「自定义异常 + 全局处理器为何比手写 JSONResponse 好」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch16 ｜ **M3 第一批(Ch13–17)收尾**\n> **目标**:掌握 FastAPI 的三类工程化能力——**中间件**(= Servlet Filter)、**全局异常处理**(= `@ControllerAdvice`)、**CORS** 跨域。这是 API 上生产的基础。\n\n> 📐 **本教程的契约**:§17.1–§17.3 对应作业三处填空。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `log_requests`(中间件) | §17.1 | @app.middleware + call_next(洋葱模型) |\n| `handle_not_found`(异常处理器) | §17.2 | @app.exception_handler → 统一错误格式 |\n| `get_product`(抛业务异常) | §17.3 | raise 自定义异常 → 被处理器映射 |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-60-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45-60 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 填三处实现 → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Spring 用 `Filter` / `HandlerInterceptor` 在请求前后做横切(日志/鉴权/计时)。FastAPI 对应什么?\n2. Spring 用 `@ControllerAdvice` + `@ExceptionHandler` 统一处理异常。FastAPI 怎么注册异常处理器?\n3. 前端跨域报 CORS 错,后端怎么放行?\n4. 中间件在请求进/出各执行一次,这个「套娃」结构叫什么模型?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.1",
+      "heading": "§17.1 中间件:洋葱模型(对应:`log_requests`)🔴",
+      "secNum": "17.1",
+      "body": "中间件在**每个请求**前后执行,用于横切关注点(日志、计时、鉴权、CORS)。结构是**洋葱**——请求层层进入、响应层层出来:\n\n```python\n@app.middleware(\"http\")\nasync def log_requests(request: Request, call_next):\n    # —— 请求进来时执行(call_next 之前)——\n    start = time.time()\n    response = await call_next(request)     # 放行:交给下一层中间件/路由\n    # —— 响应出来时执行(call_next 之后)——\n    duration_ms = (time.time() - start) * 1000\n    response.headers[\"X-Process-Time-ms\"] = f\"{duration_ms:.2f}\"\n    return response\n```\n\n**三个关键点**:\n- `call_next(request)` 是「放行」——把请求交给下一层(最终到路由)。`call_next` 是 async,必须 `await`(Ch18 异步详讲)。\n- `call_next` 返回 `response`,你可以在返回前**修改它**(这里加了个响应头)。\n- `call_next` **之前**的代码 = 请求进入时跑;**之后**的代码 = 响应出来时跑。这就是洋葱。\n\n> 🟡 **Java 对比**:= Servlet `Filter` / Spring `HandlerInterceptor`。`doFilter`/`proceed` 对应 `call_next`。FastAPI 一个装饰器 + 函数搞定,比 Java 的 Filter 接口简洁。\n\n### 多个中间件的顺序\n\n注册多个中间件时,**后注册的先执行**(洋葱最外层)。中间件包着中间件,最里面是路由。\n\n> ✅ 做 `log_requests` 题:`start` → `await call_next` → 算耗时 → 加 header → `return response`。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.2",
+      "heading": "§17.2 全局异常处理:统一错误格式(对应:`handle_not_found`)🔴",
+      "secNum": "17.2",
+      "body": "**问题**:业务代码里 `raise NotFoundError(...)`,你希望它自动变成「404 + 统一 JSON 格式」,而不是让用户看到 500 或 FastAPI 默认错误体。\n\n**解法**:`@app.exception_handler(异常类型)` 注册处理器:\n\n```python\nfrom fastapi.responses import JSONResponse\n\n@app.exception_handler(NotFoundError)\ndef handle_not_found(request: Request, exc: NotFoundError):\n    # exc 是抛出的异常实例;request 是请求对象\n    return JSONResponse(\n        status_code=404,\n        content={\"error\": \"NotFound\", \"message\": f\"{exc.resource} {exc.id} 不存在\"},\n    )\n\n# 业务代码里\n@app.get(\"/products/{id}\")\ndef get_product(id: int):\n    if id not in PRODUCTS:\n        raise NotFoundError(\"Product\", id)   # 抛出 → 被上面的处理器接住 → 返 404\n    return PRODUCTS[id]\n```\n\n**好处**:\n- 业务代码只管 `raise`(干净),不用每处手写 `JSONResponse(404)`。\n- 错误格式**统一**(所有 NotFoundError 都返 `{\"error\":\"NotFound\",\"message\":...}`),前端好处理。\n\n> 🤯 **Java 对比**:= `@ControllerAdvice` + `@ExceptionHandler(NotFoundError.class)`。FastAPI 一个装饰器搞定。这是生产 API 的标配——所有业务异常统一格式,前端只认一套错误结构。\n\n> ✅ 做 `handle_not_found` 题:返回 `JSONResponse(404, {\"error\":\"NotFound\",\"message\":...})`。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.3",
+      "heading": "§17.3 自定义业务异常(对应:`get_product`)",
+      "secNum": "17.3",
+      "body": "定义业务异常(继承 Exception),在端点里 raise,处理器自动映射:\n\n```python\nclass NotFoundError(Exception):\n    def __init__(self, resource, id):\n        self.resource = resource\n        self.id = id\n\n@app.get(\"/products/{id}\")\ndef get_product(id: int):\n    if id not in PRODUCTS:\n        raise NotFoundError(\"Product\", id)   # 自动被 §17.2 的处理器映射成 404\n    return PRODUCTS[id]\n```\n\n> 业务异常是「**业务规则违反**」(资源不存在、库存不足、权限不够),和「**程序 bug**」(ValueError、KeyError)区分开。前者映射成 4xx,后者是 500。\n\n> ✅ 做 `get_product` 题:不存在 `raise NotFoundError(...)`,否则返回。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.4",
+      "heading": "§17.4 CORS:跨域资源共享",
+      "secNum": "17.4",
+      "body": "浏览器有同源策略:前端 `http://localhost:3000` 调后端 `http://localhost:8000` 会被拦。后端配 CORS 放行:\n\n```python\nfrom fastapi.middleware.cors import CORSMiddleware\n\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"http://localhost:3000\"],   # 允许的前端域名(生产别用 *)\n    allow_methods=[\"*\"],                        # 允许的 HTTP 方法\n    allow_headers=[\"*\"],                        # 允许的请求头\n    allow_credentials=True,                     # 允许带 cookie\n)\n```\n\n> 🟡 **Java 对比**:= Spring `@CrossOrigin` / `CorsFilter` / WebMvcConfigurer。FastAPI 一个 add_middleware 搞定。\n>\n> ⚠️ `allow_origins=[\"*\"]` + `allow_credentials=True` 不能同时用(浏览器拒绝)。生产环境一定要限定具体域名,别用 `*`。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.5",
+      "heading": "§17.5 未处理的异常 = 500",
+      "secNum": "17.5",
+      "body": "业务代码抛了**没注册处理器**的异常(如 `ValueError`),FastAPI 返 **500 Internal Server Error**。生产环境应该:\n- 注册一个兜底的 `Exception` 处理器,把 500 也格式化、记日志(不暴露堆栈给用户)。\n- 用 Ch12 的 logging 记录完整异常栈。\n\n```python\n@app.exception_handler(Exception)         # 兜底所有异常\ndef handle_all(request, exc):\n    logger.exception(\"未处理异常\")         # 记日志\n    return JSONResponse(500, {\"error\": \"InternalServerError\", \"message\": \"服务内部错误\"})\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.6",
+      "heading": "§17.6 速查:Java 横切机制对照",
+      "secNum": "17.6",
+      "body": "| FastAPI | Java 对应 | 用途 |\n|---------|-----------|------|\n| `@app.middleware(\"http\")` | Servlet Filter / Interceptor | 请求前后横切(日志/计时) |\n| `@app.exception_handler(X)` | @ControllerAdvice + @ExceptionHandler | 异常 → HTTP 响应 |\n| `add_middleware(CORSMiddleware)` | @CrossOrigin / CorsFilter | 跨域 |\n| `Depends`(Ch16) | @Autowired | 依赖注入 |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-17.7",
+      "heading": "§17.7 Java 老手常踩的坑 ⚠️",
+      "secNum": "17.7",
+      "body": "1. **`call_next` 必须 `await`**:它是 async,忘 await 会得到协程对象而非响应。\n2. **中间件顺序**:后注册先执行(洋葱外层)。顺序错了可能影响行为(如鉴权要在日志前)。\n3. **CORS `*` + credentials 冲突**:浏览器不允许,二选一。生产限定域名。\n4. **业务异常 vs 程序异常**:业务异常(4xx)用自定义异常 + 处理器;程序异常(500)兜底处理 + 记日志。\n5. **异常处理器没注册就 raise**:NotFoundError 没 handler 就是 500(被当普通异常)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `log_requests` | 中间件(洋葱模型) | 🟡 |\n| `handle_not_found` | 全局异常处理 | 🟡 |\n| `get_product` | 抛业务异常 | 🟢 |\n\n```bash\nuv run pytest 03_web_framework/ch17/test_ch17_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清中间件的「洋葱模型」(call_next 前后各执行一次)\n- [ ] 能用 `@app.exception_handler` 把业务异常映射成统一格式的 HTTP 响应\n- [ ] 知道 CORS 怎么配,以及 `*` + credentials 的坑\n- [ ] 3 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「中间件的洋葱模型是什么?call_next 前后的代码分别在何时执行?」— 重读 §17.1\n2. 「为什么用自定义异常 + 全局处理器,而不是每处手写 JSONResponse(404)?」— 重读 §17.2/§17.3",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步-M3-第一批-Ch13-17-收尾",
+      "heading": "⏭️ 下一步:M3 第一批(Ch13–17)收尾",
+      "secNum": null,
+      "body": "Ch13–17 学完,你掌握了 FastAPI 的**基础全貌**:调 API(httpx)→ 写 API(FastAPI + Pydantic)→ 参数(路由/查询/分页)→ 依赖注入 → 中间件/异常/CORS。\n\n下一批 **Ch18–22**(你说一声我就写):\n- **Ch18** 异步 async/await(Ch18 重点,Python 和 Java 最大差异之一)\n- **Ch19** SQLAlchemy 数据库 ORM(接真 DB,告别内存存储)\n- **Ch20** 测试 API(TestClient 进阶 + fixtures + 覆盖率)\n- **Ch21** JWT 认证授权\n- **Ch22** 部署(uvicorn/gunicorn/Docker)+ Flask/Django 对比\n\n学完 Ch18–22,你就能做**考试系统 lab** 了。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "handle_not_found",
+      "testClass": "TestHandleNotFound",
+      "skeleton": "@app.exception_handler(NotFoundError)\ndef handle_not_found(request: Request, exc: NotFoundError):\n    \"\"\"\n    【全局异常处理 · §17.2】把 NotFoundError 映射成 404 + 统一错误格式。\n\n    思路:return JSONResponse(\n        status_code=404,\n        content={\"error\": \"NotFound\", \"message\": f\"{exc.resource} {exc.id} 不存在\"},\n    )\n    \"\"\"\n    # TODO: 返回 JSONResponse(404, {\"error\":\"NotFound\", \"message\":...})\n    ..."
+    },
+    {
+      "name": "get_product",
+      "testClass": "TestGetProduct",
+      "skeleton": "@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【端点抛业务异常 · §17.3】不存在时 raise NotFoundError(被全局处理器接住,映射 404)。\n\n    思路:if product_id not in PRODUCTS: raise NotFoundError(\"Product\", product_id)\n         return PRODUCTS[product_id]\n    \"\"\"\n    # TODO: 不存在 raise NotFoundError;否则返回\n    ..."
+    },
+    {
+      "name": "trigger_error",
+      "testClass": "TestTriggerError",
+      "skeleton": "@app.get(\"/error\")\ndef trigger_error():\n    ..."
+    },
+    {
+      "name": "health",
+      "testClass": "TestHealth",
+      "skeleton": "@app.get(\"/health\")\ndef health():\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh17 作业:中间件、CORS、全局异常处理。\n\nCORS 配置 + NotFoundError 定义已给。你填三处:① 计时中间件 ② 异常处理器 ③ 端点抛业务异常。\n\n    uv run pytest 03_web_framework/ch17/test_ch17_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport time\n\nfrom fastapi import FastAPI, Request\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom fastapi.responses import JSONResponse\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"中间件与异常演示\")\n\n\n# ---------- CORS 中间件(已配好,了解即可)----------\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n\n# ---------- 自定义业务异常(已定义)----------\nclass NotFoundError(Exception):\n    \"\"\"资源不存在的业务异常。会被全局处理器映射成 404。\"\"\"\n    def __init__(self, resource: str, id: int):\n        self.resource = resource\n        self.id = id\n\n\n# ---------- 全局异常处理器(你填)----------\n\n\n# TODO: 注册 NotFoundError 的异常处理器,返回统一格式的 404 JSON\n# ---------- 计时中间件(你填)----------\n\n\nasync def log_requests(request: Request, call_next):\n    \"\"\"\n    【中间件 · §17.1】给每个请求计时,在响应头加 X-Process-Time-ms。\n\n    思路(洋葱模型:进来记时 → call_next 放行 → 出来算耗时 → 改响应头):\n        start = time.time()\n        response = await call_next(request)              # 放行(call_next 是 async,要 await)\n        duration_ms = (time.time() - start) * 1000\n        response.headers[\"X-Process-Time-ms\"] = f\"{duration_ms:.2f}\"\n        return response\n    \"\"\"\n    # TODO: 记时 → await call_next → 算耗时 → 加响应头 → return response\n    ...\n\n\n# ---------- 数据 + 端点 ----------\nclass Product(BaseModel):\n    id: int\n    name: str\n\n\nPRODUCTS: dict[int, Product] = {\n    1: Product(id=1, name=\"机械键盘\"),\n    2: Product(id=2, name=\"无线鼠标\"),\n}"
+}

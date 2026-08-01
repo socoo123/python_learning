@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getChapter, getModule, shared } from "../data/curriculum";
+import { getChapterSummary, getModule, loadChapter, shared } from "../data/curriculum";
 import type { Chapter, FuncDef } from "../types";
 import MarkdownView from "../components/MarkdownView";
 import CodeRunner from "../components/CodeRunner";
@@ -37,14 +37,63 @@ function buildBlocks(chapter: Chapter): Block[] {
 
 export default function ChapterPage() {
   const { moduleId, chapterId } = useParams();
-  const chapter = moduleId && chapterId ? getChapter(moduleId, chapterId) : undefined;
   const module = moduleId ? getModule(moduleId) : undefined;
+  const summary = moduleId && chapterId ? getChapterSummary(moduleId, chapterId) : undefined;
+  const [chapter, setChapter] = useState<Chapter | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [pyReady, setPyReady] = useState(false);
 
-  if (!chapter || !module) {
+  useEffect(() => {
+    let cancelled = false;
+    setChapter(null);
+    setPyReady(false);
+    setLoadError(false);
+
+    if (!summary || !chapterId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    loadChapter(chapterId)
+      .then((ch) => {
+        if (cancelled) return;
+        if (!ch) setLoadError(true);
+        else setChapter(ch);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterId, summary]);
+
+  if (!module || !summary) {
     return (
       <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
         章节不存在。<Link to="/" className="text-accent">返回首页</Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
+        加载章节内容…
+      </div>
+    );
+  }
+
+  if (loadError || !chapter) {
+    return (
+      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
+        章节内容加载失败。<Link to={`/m/${module.id}`} className="text-accent">返回模块</Link>
       </div>
     );
   }

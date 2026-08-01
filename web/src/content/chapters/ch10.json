@@ -1,0 +1,148 @@
+{
+  "id": "ch10",
+  "num": "10",
+  "title": "正则表达式与字符串处理",
+  "runMode": "pyodide",
+  "tutorialMd": "# Ch10 · 正则表达式与字符串处理\n\n> **预计**:0.5 天 ｜ **前置**:M1 ｜ **M2 第三章**\n> **目标**:掌握 Python `re` 模块——`match`/`search`/`findall`/`sub`/`split`,分组与命名分组。正则本身跨语言(你 Java 经验直接复用),本章重点是 **Python `re` 的 API** 和 **命名分组语法**。\n\n> 📐 **本教程的契约**:下面每一节都对应作业。正则语法看 §10.1 速查,nginx 日志正则的逐段拆解看 §10.5。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `parse_nginx_log` | §10.3/§10.5 | 命名分组 + search + groupdict |\n| `extract_ips` | §10.2 | re.findall |\n| `redact_phones` | §10.2 | re.sub |\n| `split_on` | §10.2 | re.split |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## §10.1 正则语法速查(Java 老手秒懂,扫一遍)\n\n正则元字符跨语言通用,你 Java 经验直接搬:\n\n| 语法 | 含义 | 例子 |\n|------|------|------|\n| `\\d` | 数字 [0-9] | `\\d+` 一串数字 |\n| `\\w` | 字母数字下划线 | `\\w+` 单词 |\n| `\\s` | 空白(空格/tab/换行) | |\n| `.` | 任意一个字符(除换行) | |\n| `+` | 前一个,1 次或多次 | `\\d+` |\n| `*` | 前一个,0 次或多次 | |\n| `?` | 前一个,0 或 1 次 | `https?` 匹配 http/https |\n| `{m,n}` | m 到 n 次 | `\\d{1,3}` 1~3 位 |\n| `[...]` | 字符集(任选一个) | `[A-Z]` 大写字母 |\n| `[^...]` | 取反 | `[^\\]]` 非 ] 的字符 |\n| `^` / `$` | 行首 / 行尾 | |\n| `\\b` | 单词边界 | `\\bword\\b` 精确匹配 |\n| `(...)` | 捕获分组 | |\n| `(?:...)` | 非捕获分组(不存) | `(?:\\.\\d{1,3}){3}` 重复 3 次 |\n| `(?P<name>...)` | **命名分组**(Python 写法) | 见 §10.3 |\n\n> 🟡 **Python 转义坑**:正则里的 `\\d` 在 Python 字符串中要写 `r'\\d'`(原始字符串)。如果写 `'\\d'`,Python 会警告(因为 `\\d` 不是合法转义)。**正则一律用 `r'...'` 原始字符串**。\n\n---\n\n## §10.2 re 模块五大函数\n\n```python\nimport re\n\nre.search(模式, 文本)     # 在文本里【找第一个】匹配,返回 Match 或 None(最常用)\nre.match(模式, 文本)      # 只从【开头】匹配(Java matches 头部)\nre.fullmatch(模式, 文本)  # 整个文本完全匹配\nre.findall(模式, 文本)    # 找【所有】匹配,返回字符串列表\nre.finditer(模式, 文本)   # 同上,返回 Match 迭代器\nre.sub(模式, 替换, 文本)  # 替换所有匹配\nre.split(模式, 文本)      # 按模式拆分\n```\n\n### 各函数示例\n\n```python\nre.search(r'\\d+', 'abc123def')    # <Match>  找到 123\nre.match(r'\\d+', 'abc123')        # None     开头不是数字\nre.findall(r'\\d+', 'a1b22c333')   # ['1','22','333']\nre.sub(r'\\d', '#', 'a1b2')        # 'a#b#'\nre.split(r'[,;]', 'a,b;c')        # ['a','b','c']\n```\n\n> 🟡 **Java 对比**:= `Pattern.compile(模式)` + `matcher(文本)` + `.find()/.matches()/.group()`。Python 不用显式 compile 也能用(内部会缓存),更简洁。`search` = Java `find`(找任意位置),`match` = Java `matches`(从开头)。\n\n### Match 对象\n\n```python\nm = re.search(r'(\\d+)-(\\w+)', 'order: 1234-abc')\nm.group(0)    # '1234-abc'  整个匹配\nm.group(1)    # '1234'      第 1 个分组\nm.group(2)    # 'abc'       第 2 个分组\nm.groups()    # ('1234','abc')\n```\n\n---\n\n## §10.3 命名分组(本节重点)\n\n给分组起名字,比 `group(1)`/`group(2)` 可读得多。**Python 用 `(?P<name>...)`**(注意大写 P):\n\n```python\nm = re.search(r'(?P<year>\\d{4})-(?P<month>\\d{2})', '2026-07')\nm.group('year')        # '2026'   按名字取\nm.group('month')       # '07'\nm.groupdict()          # {'year':'2026', 'month':'07'}   一次拿全\n```\n\n> 🟡 **Java 对比**:Java 是 `(?<year>\\d{4})`(没有 P)。Python 历史包袱多了个 P。功能一样。\n\n> ✅ 这就是 `parse_nginx_log` 的核心:`LOG_RE.search(line)` → `m.groupdict()` 一次拿到 ip/method/path/status。\n\n---\n\n## §10.4 re.compile:预编译\n\n同一段正则用多次时,`re.compile` 预编译成对象,稍快且可复用:\n\n```python\nIP_RE = re.compile(r'\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b')   # 模块级编译一次\nIP_RE.findall(text)        # 等价 re.findall(r'...', text),但复用更高效\nIP_RE.search(text)\n```\n\n> 用一次的正则直接 `re.search(...)` 即可;用多次(尤其循环里)就 `compile`。\n\n---\n\n## §10.5 实战:parse_nginx_log 逐段拆解 🔴\n\nnginx 日志格式:\n```\n192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] \"GET /api/products HTTP/1.1\" 200 1234\n```\n\n逐段写正则(每个要提取的部分用命名分组):\n\n```\n(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)              # 192.168.1.1   4 段数字点连\n - - \\[                                  #  - - [     (字面量,要匹配)\n(?P<time>[^\\]]+)                         # 10/Oct/...+0000   ] 前的所有字符\n\\] \"                                     # ] \"\n(?P<method>[A-Z]+)                       # GET   大写字母\n (?P<path>\\S+)                           # /api/products   非空白字符\n HTTP/[\\d.]+\"                            # HTTP/1.1\"\n (?P<status>\\d+)                         # 200\n```\n\n组合(注意用原始字符串 `r'...'`,换行用字符串拼接):\n```python\nLOG_RE = re.compile(\n    r'(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+) - - \\[(?P<time>[^\\]]+)\\] '\n    r'\"(?P<method>[A-Z]+) (?P<path>\\S+) HTTP/[\\d.]+\" (?P<status>\\d+)'\n)\n\ndef parse_nginx_log(line):\n    m = LOG_RE.search(line)\n    if not m:                # 非法行,search 返回 None\n        return None\n    d = m.groupdict()        # {ip, time, method, path, status}\n    d[\"status\"] = int(d[\"status\"])   # status 默认是字符串,转成 int\n    return d\n```\n\n**几个关键点**:\n- `[^\\]]+` 匹配「非 `]` 的字符一个或多个」——用来抓 `[...]` 里的时间(因为时间含 `/` `:` `+` 各种符号,用「取反」最省事)。\n- `\\S+` 匹配「非空白字符」——路径 `/api/products` 没有空格,用 `\\S+`。\n- `HTTP/[\\d.]+` 匹配 `HTTP/1.1`(`[\\d.]` 是数字或点)。\n- 字面量的 `[` `]` `\"` 要在正则里精确写出来(`]` 在外面不用转义,`[` 在字符集外一般也行,但保险可写 `\\[`)。\n\n---\n\n## §10.6 re vs str 方法:何时用正则\n\n能用 `str` 方法解决就别上正则(正则可读性差、易错):\n\n```python\n# ✅ 简单判断用 str 方法\n\"2026-07\" in text\ntext.startswith(\"http\")\ntext.split(\",\")[0]\n\n# 🔴 复杂模式才用正则(IP、邮箱、日志结构、手机号)\nre.findall(r'\\d+\\.\\d+\\.\\d+\\.\\d+', text)\n```\n\n---\n\n## §10.7 Java 老手常踩的坑 ⚠️\n\n1. **忘加 `r` 原始字符串**:`'\\d'` 会警告,必须 `r'\\d'`。\n2. **`match` vs `search`**:`match` 只看开头,`search` 找任意位置。要找文本中间的内容用 `search`。\n3. **`findall` 有分组时行为变化**:如果模式里有分组,`findall` 返回分组元组而非整个匹配。要整个匹配就别用分组,或用 `(?:...)` 非捕获分组。\n4. **贪婪 vs 非贪婪**:`.*` 贪婪(尽量多匹配),`.*?` 非贪婪(尽量少)。提取标签内容用 `.*?`。\n5. **命名分组是 `(?P<name>...)`**:别忘了那个 `P`(Java 没有)。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `parse_nginx_log` | 命名分组 + search | 🔴 |\n| `extract_ips` | findall | 🟢 |\n| `redact_phones` | sub | 🟢 |\n| `split_on` | split | 🟢 |\n\n```bash\nuv run pytest 02_stdlib/ch10/test_ch10_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能用 `(?P<name>...)` 命名分组 + `groupdict()` 提取结构化数据\n- [ ] 知道 `search` vs `match` vs `findall` 的区别\n- [ ] 知道正则必须用 `r'...'` 原始字符串\n- [ ] 4 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「Python 命名分组怎么写?它比 group(1) 好在哪?和 Java 有何不同?」— 重读 §10.3\n2. 「search/match/findall 分别在什么场景用?」— 重读 §10.2\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh10 掌握后,进 **Ch11 · json / csv / datetime**——数据交换三件套,重点处理 datetime 序列化(对比 Java `java.time`)。\n",
+  "assignment": "\"\"\"\nCh10 作业:正则表达式与字符串处理。\n\n4 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch10/test_ch10_assignment.py -v\n\n全绿 = 你掌握了 Ch10。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n(正则语法看 §10.1 速查表;nginx 日志正则的逐段拆解看 §10.5。)\n\"\"\"\nimport re\n\n\n# ========== 预编译正则(模块级,复用高效)==========\n\n# TODO: 预编译 nginx 日志正则(命名分组)。结构提示见 parse_nginx_log 的 docstring。\nLOG_RE = None   # ← 换成 re.compile(r\"...\")\n\n# TODO: 预编译 IP 地址正则\nIP_RE = None    # ← 换成 re.compile(r\"...\")\n\n\n# ========== §10.3/§10.5 re + 命名分组 ==========\n\n\ndef parse_nginx_log(line: str) -> dict | None:\n    \"\"\"\n    【命名分组 · §10.5】解析一行 nginx 日志,提取 ip/time/method/path/status。\n    合法行返回 dict(status 转 int);非法行返回 None。\n\n    示例行:\n        '192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] \"GET /api/products HTTP/1.1\" 200 1234'\n        -> {\"ip\":\"192.168.1.1\", \"time\":\"...\", \"method\":\"GET\", \"path\":\"/api/products\", \"status\":200}\n\n    正则结构(LOG_RE 用这个,命名分组):\n        (?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)           4 段数字用点连\n         - - \\[(?P<time>[^\\]]+)\\]             \" - - [时间]\"  时间是 ] 前的任意字符([^\\]]+)\n        \"(?P<method>[A-Z]+) (?P<path>\\S+) HTTP/[\\d.]+\"    \"方法 路径 HTTP/x.x\"\n         (?P<status>\\d+)                      状态码\n\n    思路:m = LOG_RE.search(line);m 为 None 返回 None;否则 d = m.groupdict(),\n         把 d[\"status\"] 转成 int 后返回 d。\n    \"\"\"\n    # TODO: search + 判空 + groupdict + status 转 int\n    ...\n\n\n# ========== §10.2 re.findall ==========\n\n\ndef extract_ips(text: str) -> list[str]:\n    \"\"\"\n    【findall · §10.2】提取文本里所有 IP 地址。\n\n    示例:\n        extract_ips(\"from 1.2.3.4 to 10.0.0.5\")  -> [\"1.2.3.4\", \"10.0.0.5\"]\n\n    思路:IP 正则 \\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b(单词边界 + 4 段 1~3 位数字)。\n         用预编译的 IP_RE.findall(text)。\n    \"\"\"\n    # TODO: IP_RE.findall(text)\n    ...\n\n\n# ========== §10.2 re.sub ==========\n\n\ndef redact_phones(text: str) -> str:\n    \"\"\"\n    【sub · §10.2】把手机号(1 开头 11 位)替换成 ***。\n\n    示例:\n        redact_phones(\"call 13812345678\")  -> \"call ***\"\n\n    思路:手机号正则 1[3-9]\\d{9}(1 开头、第二位 3-9、再 9 位数字 = 11 位)。\n         re.sub(正则, '***', text)。\n    \"\"\"\n    # TODO: re.sub(r'1[3-9]\\d{9}', '***', text)\n    ...\n\n\n# ========== §10.2 re.split ==========\n\n\ndef split_on(text: str, seps: str = r'[,;]') -> list[str]:\n    \"\"\"\n    【split · §10.2】按【多种分隔符】(默认逗号或分号)拆分字符串。\n\n    示例:\n        split_on(\"a,b;c\")  -> [\"a\", \"b\", \"c\"]\n\n    思路:re.split(seps, text)。seps 本身是正则,默认 r'[,;]' 表示「逗号或分号」。\n    \"\"\"\n    # TODO: re.split(seps, text)\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    from conftest import load_mock_json\n\n    logs = load_mock_json(\"nginx_logs.json\")\n    for line in logs:\n        print(parse_nginx_log(line))\n    print(\"ips:\", extract_ips(\"from 1.2.3.4 to 10.0.0.5\"))\n    print(\"redact:\", redact_phones(\"call 13812345678\"))\n    print(\"split:\", split_on(\"a,b;c\"))\n",
+  "testName": "ch10_assignment",
+  "testSource": "\"\"\"\nCh10 作业测试。运行: uv run pytest 02_stdlib/ch10/test_ch10_assignment.py -v\n\"\"\"\nimport pytest\n\nfrom ch10_assignment import parse_nginx_log, extract_ips, redact_phones, split_on\nfrom conftest import load_mock_json\n\n\n@pytest.fixture\ndef nginx_logs():\n    return load_mock_json(\"nginx_logs.json\")\n\n\n# ---------- parse_nginx_log:re + 命名分组 ----------\nclass TestParseNginxLog:\n    def test_valid_get(self, nginx_logs):\n        r = parse_nginx_log(nginx_logs[0])\n        assert r[\"ip\"] == \"192.168.1.1\"\n        assert r[\"method\"] == \"GET\"\n        assert r[\"path\"] == \"/api/products\"\n        assert r[\"status\"] == 200\n\n    def test_status_is_int(self, nginx_logs):\n        r = parse_nginx_log(nginx_logs[0])\n        assert isinstance(r[\"status\"], int)\n\n    def test_delete_500(self, nginx_logs):\n        r = parse_nginx_log(nginx_logs[2])\n        assert r[\"method\"] == \"DELETE\"\n        assert r[\"status\"] == 500\n\n    def test_has_time_field(self, nginx_logs):\n        r = parse_nginx_log(nginx_logs[1])\n        assert \"10/Oct/2023\" in r[\"time\"]\n\n    def test_malformed_returns_none(self, nginx_logs):\n        assert parse_nginx_log(nginx_logs[4]) is None\n        assert parse_nginx_log(nginx_logs[5]) is None\n\n    def test_empty_string_returns_none(self):\n        assert parse_nginx_log(\"\") is None\n\n\n# ---------- extract_ips:re.findall ----------\nclass TestExtractIps:\n    def test_find_two(self):\n        assert extract_ips(\"from 1.2.3.4 to 10.0.0.5\") == [\"1.2.3.4\", \"10.0.0.5\"]\n\n    def test_single(self):\n        assert extract_ips(\"ip=192.168.1.1\") == [\"192.168.1.1\"]\n\n    def test_none(self):\n        assert extract_ips(\"no ip here\") == []\n\n    def test_in_sentence(self):\n        result = extract_ips(\"client 8.8.8.8 connected via 1.1.1.1\")\n        assert result == [\"8.8.8.8\", \"1.1.1.1\"]\n\n\n# ---------- redact_phones:re.sub ----------\nclass TestRedactPhones:\n    def test_basic(self):\n        assert redact_phones(\"call 13812345678\") == \"call ***\"\n\n    def test_multiple(self):\n        assert redact_phones(\"a:13900001111 b:15800002222\") == \"a:*** b:***\"\n\n    def test_no_phone_unchanged(self):\n        assert redact_phones(\"no phone here\") == \"no phone here\"\n\n    def test_keeps_short_numbers(self):\n        # 短数字(不是 11 位手机号)不替换\n        assert redact_phones(\"code 12345\") == \"code 12345\"\n\n\n# ---------- split_on:re.split ----------\nclass TestSplitOn:\n    def test_comma(self):\n        assert split_on(\"a,b,c\") == [\"a\", \"b\", \"c\"]\n\n    def test_mixed_seps(self):\n        assert split_on(\"a,b;c\") == [\"a\", \"b\", \"c\"]\n\n    def test_single(self):\n        assert split_on(\"solo\") == [\"solo\"]\n\n    def test_custom_sep(self):\n        assert split_on(\"a|b|c\", seps=r\"\\|\") == [\"a\", \"b\", \"c\"]\n",
+  "reviewMd": "# Ch10 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | Python 命名分组怎么写?和 Java 有何不同? | `(?P<name>...)`(注意大写 **P**)。Java 是 `(?<name>...)` 没 P。`m.groupdict()` 一次拿全命名分组 | ⬜ |\n| 2 | `re.search` / `re.match` / `findall` 区别? | search 找【任意位置】第一个;match 只看【开头】;findall 找【所有】返回列表 | ⬜ |\n| 3 | Python 正则字符串为什么要加 `r`? | 正则里的 `\\d` `\\w` 不是合法 Python 转义,不加 `r` 会警告。**正则一律用原始字符串 `r'...'`** | ⬜ |\n| 4 | `re.sub` 和 `re.split` 各干嘛? | sub = 替换所有匹配(`re.sub(r'\\d','#','a1')`→'a#');split = 按模式拆分(`re.split(r'[,;]','a,b;c')`→['a','b','c']) | ⬜ |\n| 5 | `[^\\]]+` 和 `\\S+` 各匹配什么? | `[^\\]]+` = 非 ] 的字符一个或多个(抓方括号内容);`\\S+` = 非空白字符一个或多个(抓无空格的路径等) | ⬜ |\n| 6 | `findall` 遇到分组会怎样? | 模式有分组时,findall 返回【分组元组】而非整个匹配。要整个匹配就别分组,或用 `(?:...)` 非捕获分组 | ⬜ |\n| 7 | 贪婪 `.*` 和非贪婪 `.*?`? | `.*` 贪婪(尽量多匹配),`.*?` 非贪婪(尽量少)。提取 `<tag>...</tag>` 内容用 `.*?` 避免吃多 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「命名分组 (?P<name>) 的用法,和 Java 的差异」?\n- [ ] 能说清「search/match/findall 各自场景」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": true,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:M1 ｜ **M2 第三章**\n> **目标**:掌握 Python `re` 模块——`match`/`search`/`findall`/`sub`/`split`,分组与命名分组。正则本身跨语言(你 Java 经验直接复用),本章重点是 **Python `re` 的 API** 和 **命名分组语法**。\n\n> 📐 **本教程的契约**:下面每一节都对应作业。正则语法看 §10.1 速查,nginx 日志正则的逐段拆解看 §10.5。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `parse_nginx_log` | §10.3/§10.5 | 命名分组 + search + groupdict |\n| `extract_ips` | §10.2 | re.findall |\n| `redact_phones` | §10.2 | re.sub |\n| `split_on` | §10.2 | re.split |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-10.1",
+      "heading": "§10.1 正则语法速查(Java 老手秒懂,扫一遍)",
+      "secNum": "10.1",
+      "body": "正则元字符跨语言通用,你 Java 经验直接搬:\n\n| 语法 | 含义 | 例子 |\n|------|------|------|\n| `\\d` | 数字 [0-9] | `\\d+` 一串数字 |\n| `\\w` | 字母数字下划线 | `\\w+` 单词 |\n| `\\s` | 空白(空格/tab/换行) | |\n| `.` | 任意一个字符(除换行) | |\n| `+` | 前一个,1 次或多次 | `\\d+` |\n| `*` | 前一个,0 次或多次 | |\n| `?` | 前一个,0 或 1 次 | `https?` 匹配 http/https |\n| `{m,n}` | m 到 n 次 | `\\d{1,3}` 1~3 位 |\n| `[...]` | 字符集(任选一个) | `[A-Z]` 大写字母 |\n| `[^...]` | 取反 | `[^\\]]` 非 ] 的字符 |\n| `^` / `$` | 行首 / 行尾 | |\n| `\\b` | 单词边界 | `\\bword\\b` 精确匹配 |\n| `(...)` | 捕获分组 | |\n| `(?:...)` | 非捕获分组(不存) | `(?:\\.\\d{1,3}){3}` 重复 3 次 |\n| `(?P<name>...)` | **命名分组**(Python 写法) | 见 §10.3 |\n\n> 🟡 **Python 转义坑**:正则里的 `\\d` 在 Python 字符串中要写 `r'\\d'`(原始字符串)。如果写 `'\\d'`,Python 会警告(因为 `\\d` 不是合法转义)。**正则一律用 `r'...'` 原始字符串**。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-10.2",
+      "heading": "§10.2 re 模块五大函数",
+      "secNum": "10.2",
+      "body": "```python\nimport re\n\nre.search(模式, 文本)     # 在文本里【找第一个】匹配,返回 Match 或 None(最常用)\nre.match(模式, 文本)      # 只从【开头】匹配(Java matches 头部)\nre.fullmatch(模式, 文本)  # 整个文本完全匹配\nre.findall(模式, 文本)    # 找【所有】匹配,返回字符串列表\nre.finditer(模式, 文本)   # 同上,返回 Match 迭代器\nre.sub(模式, 替换, 文本)  # 替换所有匹配\nre.split(模式, 文本)      # 按模式拆分\n```\n\n### 各函数示例\n\n```python\nre.search(r'\\d+', 'abc123def')    # <Match>  找到 123\nre.match(r'\\d+', 'abc123')        # None     开头不是数字\nre.findall(r'\\d+', 'a1b22c333')   # ['1','22','333']\nre.sub(r'\\d', '#', 'a1b2')        # 'a#b#'\nre.split(r'[,;]', 'a,b;c')        # ['a','b','c']\n```\n\n> 🟡 **Java 对比**:= `Pattern.compile(模式)` + `matcher(文本)` + `.find()/.matches()/.group()`。Python 不用显式 compile 也能用(内部会缓存),更简洁。`search` = Java `find`(找任意位置),`match` = Java `matches`(从开头)。\n\n### Match 对象\n\n```python\nm = re.search(r'(\\d+)-(\\w+)', 'order: 1234-abc')\nm.group(0)    # '1234-abc'  整个匹配\nm.group(1)    # '1234'      第 1 个分组\nm.group(2)    # 'abc'       第 2 个分组\nm.groups()    # ('1234','abc')\n```\n\n---",
+      "exerciseFunctions": [
+        "extract_ips",
+        "redact_phones",
+        "split_on"
+      ]
+    },
+    {
+      "id": "sec-10.3",
+      "heading": "§10.3 命名分组(本节重点)",
+      "secNum": "10.3",
+      "body": "给分组起名字,比 `group(1)`/`group(2)` 可读得多。**Python 用 `(?P<name>...)`**(注意大写 P):\n\n```python\nm = re.search(r'(?P<year>\\d{4})-(?P<month>\\d{2})', '2026-07')\nm.group('year')        # '2026'   按名字取\nm.group('month')       # '07'\nm.groupdict()          # {'year':'2026', 'month':'07'}   一次拿全\n```\n\n> 🟡 **Java 对比**:Java 是 `(?<year>\\d{4})`(没有 P)。Python 历史包袱多了个 P。功能一样。\n\n> ✅ 这就是 `parse_nginx_log` 的核心:`LOG_RE.search(line)` → `m.groupdict()` 一次拿到 ip/method/path/status。\n\n---",
+      "exerciseFunctions": [
+        "parse_nginx_log"
+      ]
+    },
+    {
+      "id": "sec-10.4",
+      "heading": "§10.4 re.compile:预编译",
+      "secNum": "10.4",
+      "body": "同一段正则用多次时,`re.compile` 预编译成对象,稍快且可复用:\n\n```python\nIP_RE = re.compile(r'\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b')   # 模块级编译一次\nIP_RE.findall(text)        # 等价 re.findall(r'...', text),但复用更高效\nIP_RE.search(text)\n```\n\n> 用一次的正则直接 `re.search(...)` 即可;用多次(尤其循环里)就 `compile`。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-10.5",
+      "heading": "§10.5 实战:parse_nginx_log 逐段拆解 🔴",
+      "secNum": "10.5",
+      "body": "nginx 日志格式:\n```\n192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] \"GET /api/products HTTP/1.1\" 200 1234\n```\n\n逐段写正则(每个要提取的部分用命名分组):\n\n```\n(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)              # 192.168.1.1   4 段数字点连\n - - \\[                                  #  - - [     (字面量,要匹配)\n(?P<time>[^\\]]+)                         # 10/Oct/...+0000   ] 前的所有字符\n\\] \"                                     # ] \"\n(?P<method>[A-Z]+)                       # GET   大写字母\n (?P<path>\\S+)                           # /api/products   非空白字符\n HTTP/[\\d.]+\"                            # HTTP/1.1\"\n (?P<status>\\d+)                         # 200\n```\n\n组合(注意用原始字符串 `r'...'`,换行用字符串拼接):\n```python\nLOG_RE = re.compile(\n    r'(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+) - - \\[(?P<time>[^\\]]+)\\] '\n    r'\"(?P<method>[A-Z]+) (?P<path>\\S+) HTTP/[\\d.]+\" (?P<status>\\d+)'\n)\n\ndef parse_nginx_log(line):\n    m = LOG_RE.search(line)\n    if not m:                # 非法行,search 返回 None\n        return None\n    d = m.groupdict()        # {ip, time, method, path, status}\n    d[\"status\"] = int(d[\"status\"])   # status 默认是字符串,转成 int\n    return d\n```\n\n**几个关键点**:\n- `[^\\]]+` 匹配「非 `]` 的字符一个或多个」——用来抓 `[...]` 里的时间(因为时间含 `/` `:` `+` 各种符号,用「取反」最省事)。\n- `\\S+` 匹配「非空白字符」——路径 `/api/products` 没有空格,用 `\\S+`。\n- `HTTP/[\\d.]+` 匹配 `HTTP/1.1`(`[\\d.]` 是数字或点)。\n- 字面量的 `[` `]` `\"` 要在正则里精确写出来(`]` 在外面不用转义,`[` 在字符集外一般也行,但保险可写 `\\[`)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-10.6",
+      "heading": "§10.6 re vs str 方法:何时用正则",
+      "secNum": "10.6",
+      "body": "能用 `str` 方法解决就别上正则(正则可读性差、易错):\n\n```python\n# ✅ 简单判断用 str 方法\n\"2026-07\" in text\ntext.startswith(\"http\")\ntext.split(\",\")[0]\n\n# 🔴 复杂模式才用正则(IP、邮箱、日志结构、手机号)\nre.findall(r'\\d+\\.\\d+\\.\\d+\\.\\d+', text)\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-10.7",
+      "heading": "§10.7 Java 老手常踩的坑 ⚠️",
+      "secNum": "10.7",
+      "body": "1. **忘加 `r` 原始字符串**:`'\\d'` 会警告,必须 `r'\\d'`。\n2. **`match` vs `search`**:`match` 只看开头,`search` 找任意位置。要找文本中间的内容用 `search`。\n3. **`findall` 有分组时行为变化**:如果模式里有分组,`findall` 返回分组元组而非整个匹配。要整个匹配就别用分组,或用 `(?:...)` 非捕获分组。\n4. **贪婪 vs 非贪婪**:`.*` 贪婪(尽量多匹配),`.*?` 非贪婪(尽量少)。提取标签内容用 `.*?`。\n5. **命名分组是 `(?P<name>...)`**:别忘了那个 `P`(Java 没有)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `parse_nginx_log` | 命名分组 + search | 🔴 |\n| `extract_ips` | findall | 🟢 |\n| `redact_phones` | sub | 🟢 |\n| `split_on` | split | 🟢 |\n\n```bash\nuv run pytest 02_stdlib/ch10/test_ch10_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能用 `(?P<name>...)` 命名分组 + `groupdict()` 提取结构化数据\n- [ ] 知道 `search` vs `match` vs `findall` 的区别\n- [ ] 知道正则必须用 `r'...'` 原始字符串\n- [ ] 4 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「Python 命名分组怎么写?它比 group(1) 好在哪?和 Java 有何不同?」— 重读 §10.3\n2. 「search/match/findall 分别在什么场景用?」— 重读 §10.2",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch10 掌握后,进 **Ch11 · json / csv / datetime**——数据交换三件套,重点处理 datetime 序列化(对比 Java `java.time`)。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "parse_nginx_log",
+      "testClass": "TestParseNginxLog",
+      "skeleton": "def parse_nginx_log(line: str) -> dict | None:\n    \"\"\"\n    【命名分组 · §10.5】解析一行 nginx 日志,提取 ip/time/method/path/status。\n    合法行返回 dict(status 转 int);非法行返回 None。\n\n    示例行:\n        '192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] \"GET /api/products HTTP/1.1\" 200 1234'\n        -> {\"ip\":\"192.168.1.1\", \"time\":\"...\", \"method\":\"GET\", \"path\":\"/api/products\", \"status\":200}\n\n    正则结构(LOG_RE 用这个,命名分组):\n        (?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)           4 段数字用点连\n         - - \\[(?P<time>[^\\]]+)\\]             \" - - [时间]\"  时间是 ] 前的任意字符([^\\]]+)\n        \"(?P<method>[A-Z]+) (?P<path>\\S+) HTTP/[\\d.]+\"    \"方法 路径 HTTP/x.x\"\n         (?P<status>\\d+)                      状态码\n\n    思路:m = LOG_RE.search(line);m 为 None 返回 None;否则 d = m.groupdict(),\n         把 d[\"status\"] 转成 int 后返回 d。\n    \"\"\"\n    # TODO: search + 判空 + groupdict + status 转 int\n    ..."
+    },
+    {
+      "name": "extract_ips",
+      "testClass": "TestExtractIps",
+      "skeleton": "def extract_ips(text: str) -> list[str]:\n    \"\"\"\n    【findall · §10.2】提取文本里所有 IP 地址。\n\n    示例:\n        extract_ips(\"from 1.2.3.4 to 10.0.0.5\")  -> [\"1.2.3.4\", \"10.0.0.5\"]\n\n    思路:IP 正则 \\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b(单词边界 + 4 段 1~3 位数字)。\n         用预编译的 IP_RE.findall(text)。\n    \"\"\"\n    # TODO: IP_RE.findall(text)\n    ..."
+    },
+    {
+      "name": "redact_phones",
+      "testClass": "TestRedactPhones",
+      "skeleton": "def redact_phones(text: str) -> str:\n    \"\"\"\n    【sub · §10.2】把手机号(1 开头 11 位)替换成 ***。\n\n    示例:\n        redact_phones(\"call 13812345678\")  -> \"call ***\"\n\n    思路:手机号正则 1[3-9]\\d{9}(1 开头、第二位 3-9、再 9 位数字 = 11 位)。\n         re.sub(正则, '***', text)。\n    \"\"\"\n    # TODO: re.sub(r'1[3-9]\\d{9}', '***', text)\n    ..."
+    },
+    {
+      "name": "split_on",
+      "testClass": "TestSplitOn",
+      "skeleton": "def split_on(text: str, seps: str = r'[,;]') -> list[str]:\n    \"\"\"\n    【split · §10.2】按【多种分隔符】(默认逗号或分号)拆分字符串。\n\n    示例:\n        split_on(\"a,b;c\")  -> [\"a\", \"b\", \"c\"]\n\n    思路:re.split(seps, text)。seps 本身是正则,默认 r'[,;]' 表示「逗号或分号」。\n    \"\"\"\n    # TODO: re.split(seps, text)\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh10 作业:正则表达式与字符串处理。\n\n4 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch10/test_ch10_assignment.py -v\n\n全绿 = 你掌握了 Ch10。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n(正则语法看 §10.1 速查表;nginx 日志正则的逐段拆解看 §10.5。)\n\"\"\"\nimport re\n\n\n# ========== 预编译正则(模块级,复用高效)==========\n\n# TODO: 预编译 nginx 日志正则(命名分组)。结构提示见 parse_nginx_log 的 docstring。\nLOG_RE = None   # ← 换成 re.compile(r\"...\")\n\n# TODO: 预编译 IP 地址正则\nIP_RE = None    # ← 换成 re.compile(r\"...\")\n\n\n# ========== §10.3/§10.5 re + 命名分组 ==========\n\n\n# ========== §10.2 re.findall ==========\n\n\n# ========== §10.2 re.sub ==========\n\n\n# ========== §10.2 re.split ==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    from conftest import load_mock_json\n\n    logs = load_mock_json(\"nginx_logs.json\")\n    for line in logs:\n        print(parse_nginx_log(line))\n    print(\"ips:\", extract_ips(\"from 1.2.3.4 to 10.0.0.5\"))\n    print(\"redact:\", redact_phones(\"call 13812345678\"))\n    print(\"split:\", split_on(\"a,b;c\"))"
+}

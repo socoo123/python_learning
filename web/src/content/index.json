@@ -1,0 +1,298 @@
+{
+  "modules": [
+    {
+      "id": "m1",
+      "title": "Python 语言核心",
+      "subtitle": "思维转换 · 数据结构 · OOP · 类型",
+      "dir": "01_python_core",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch01",
+          "num": "01",
+          "title": "环境工具链 & 从 Java 到 Python 的思维转换",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch02",
+          "num": "02",
+          "title": "数据结构:list / tuple / dict / set",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch03",
+          "num": "03",
+          "title": "控制流、迭代器、生成器、推导式",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch04",
+          "num": "04",
+          "title": "函数:一等公民、闭包、装饰器",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch05",
+          "num": "05",
+          "title": "OOP:魔术方法、继承、dataclass",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch06",
+          "num": "06",
+          "title": "异常、上下文管理器、文件 IO",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch07",
+          "num": "07",
+          "title": "类型注解与 Pythonic 风格",
+          "runMode": "pyodide"
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "title": "标准库 & 三方库",
+      "subtitle": "collections · itertools · 正则 · json",
+      "dir": "02_stdlib",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch08",
+          "num": "08",
+          "title": "collections:Counter / defaultdict / deque / namedtuple",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch09",
+          "num": "09",
+          "title": "itertools + functools:函数式利器",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch10",
+          "num": "10",
+          "title": "正则表达式与字符串处理",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch11",
+          "num": "11",
+          "title": "数据交换:json / csv / datetime",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch12",
+          "num": "12",
+          "title": "现代工具链:logging / 配置 / 项目结构",
+          "runMode": "pyodide"
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "title": "Web 框架 FastAPI",
+      "subtitle": "API · ORM · 认证 · 部署",
+      "dir": "03_web_framework",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch13",
+          "num": "13",
+          "title": "HTTP 客户端:httpx 调用 API",
+          "runMode": "local"
+        },
+        {
+          "id": "ch14",
+          "num": "14",
+          "title": "FastAPI 入门:第一个 API + Pydantic 模型",
+          "runMode": "local"
+        },
+        {
+          "id": "ch15",
+          "num": "15",
+          "title": "路由参数:路径参数 / 查询参数 / 分页",
+          "runMode": "local"
+        },
+        {
+          "id": "ch16",
+          "num": "16",
+          "title": "依赖注入系统(Depends)",
+          "runMode": "local"
+        },
+        {
+          "id": "ch17",
+          "num": "17",
+          "title": "中间件、CORS、异常处理",
+          "runMode": "local"
+        },
+        {
+          "id": "ch18",
+          "num": "18",
+          "title": "异步编程 async/await",
+          "runMode": "local"
+        },
+        {
+          "id": "ch19",
+          "num": "19",
+          "title": "数据库 ORM:SQLAlchemy 2.0",
+          "runMode": "local"
+        },
+        {
+          "id": "ch20",
+          "num": "20",
+          "title": "测试 API 进阶(TestClient + fixtures + 覆盖率)",
+          "runMode": "local"
+        },
+        {
+          "id": "ch21",
+          "num": "21",
+          "title": "认证授权 JWT",
+          "runMode": "local"
+        },
+        {
+          "id": "ch22",
+          "num": "22",
+          "title": "部署:uvicorn / gunicorn / Docker + 框架对比",
+          "runMode": "local"
+        }
+      ]
+    },
+    {
+      "id": "m4",
+      "title": "运维脚本",
+      "subtitle": "pathlib · subprocess · CLI · 监控",
+      "dir": "04_devops_scripts",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch23",
+          "num": "23",
+          "title": "文件系统批量操作:pathlib / shutil",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch24",
+          "num": "24",
+          "title": "进程与子进程管理:subprocess / psutil",
+          "runMode": "local"
+        },
+        {
+          "id": "ch25",
+          "num": "25",
+          "title": "CLI 工具开发:Typer + Rich",
+          "runMode": "local"
+        },
+        {
+          "id": "ch26",
+          "num": "26",
+          "title": "定时任务与日志分析:schedule + 聚合告警",
+          "runMode": "local"
+        },
+        {
+          "id": "ch27",
+          "num": "27",
+          "title": "配置管理与系统监控:psutil 巡检 + webhook 告警",
+          "runMode": "local"
+        }
+      ]
+    },
+    {
+      "id": "m5",
+      "title": "AI 框架",
+      "subtitle": "LLM · Prompt · RAG · Agent",
+      "dir": "05_ai_framework",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch28",
+          "num": "28",
+          "title": "LLM SDK 调用:Anthropic / OpenAI",
+          "runMode": "local"
+        },
+        {
+          "id": "ch29",
+          "num": "29",
+          "title": "Prompt 工程与结构化输出",
+          "runMode": "local"
+        },
+        {
+          "id": "ch30",
+          "num": "30",
+          "title": "LangChain 基础:LCEL",
+          "runMode": "local"
+        },
+        {
+          "id": "ch31",
+          "num": "31",
+          "title": "RAG 实战:向量检索",
+          "runMode": "local"
+        },
+        {
+          "id": "ch32",
+          "num": "32",
+          "title": "Agent 开发:Tool Use / ReAct",
+          "runMode": "local"
+        },
+        {
+          "id": "ch33",
+          "num": "33",
+          "title": "用 FastAPI 封装 AI 服务",
+          "runMode": "local"
+        }
+      ]
+    },
+    {
+      "id": "m6",
+      "title": "LeetCode 实战",
+      "subtitle": "Pythonic 刷题",
+      "dir": "06_leetcode",
+      "available": true,
+      "chapters": [
+        {
+          "id": "ch34",
+          "num": "34",
+          "title": "Python 刷题利器总览(stdlib 五件套)",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch35",
+          "num": "35",
+          "title": "双指针 / 滑动窗口",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch36",
+          "num": "36",
+          "title": "哈希表 / 前缀和",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch37",
+          "num": "37",
+          "title": "栈 / 队列 / 单调栈(LeetCode 高频)",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch38",
+          "num": "38",
+          "title": "二叉树 / DFS / BFS",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch39",
+          "num": "39",
+          "title": "动态规划(Dynamic Programming)",
+          "runMode": "pyodide"
+        },
+        {
+          "id": "ch40",
+          "num": "40",
+          "title": "回溯 / 贪心 + 综合",
+          "runMode": "pyodide"
+        }
+      ]
+    }
+  ]
+}

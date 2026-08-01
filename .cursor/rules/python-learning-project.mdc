@@ -42,7 +42,7 @@ ch{NN}/tutorial.md + ch{NN}_assignment.py(... 骨架) + test_ch{NN}_assignment.p
 | 点 | 约定 |
 |----|------|
 | 技术 | Bun + Vite + React 18 + TS + Tailwind + Monaco + Pyodide CDN；主题 Dracula；dev 端口 **5188** |
-| 可移植 | 烘焙产物 `web/src/content/curriculum.json` **提交 git**；单独 clone `web/` 就能跑 |
+| 可移植 | 烘焙产物 `web/src/content/`（`index.json` + `shared.json` + `chapters/`）**提交 git**；单独 clone `web/` 就能跑 |
 | 内容管线 | `web/scripts/build-curriculum.ts` **只读**源仓库 → 烘焙；**绝不改**课程 `.md/.py` |
 | 布局 | 交错式：按 § 讲一节 → 嵌该函数小编辑器 → `pytest path::TestClass`；解析失败回退「整教程+末尾作业」 |
 | 布局顺序 | 教程 → 作业 → 闪卡（作业不放最前、不藏 Tab） |
@@ -56,7 +56,7 @@ ch{NN}/tutorial.md + ch{NN}_assignment.py(... 骨架) + test_ch{NN}_assignment.p
 - **40 章全烘焙**；**M1–M6 均 `available=true`**。
 - Pyodide：M1/M2、Ch23、M6（多数交错式）；Local：M3 全、M5 全、Ch24–27（只读教程 + `uv run pytest`）。
 - M5 在烘焙脚本里 `FORCE_LOCAL_DIRS` 强制 Local（与 CLAUDE B.2 一致）。
-- 内容靠 `bun run build:content` 从源五件套烘焙；改源后需重跑并提交 `curriculum.json`。
+- 内容靠 `bun run build:content` 从源五件套烘焙为 `index.json` + `shared.json` + `chapters/chXX.json`（按章懒加载）；改源后需重跑并提交 `src/content/`。
 
 ### 关键命令
 

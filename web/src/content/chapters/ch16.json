@@ -1,0 +1,171 @@
+{
+  "id": "ch16",
+  "num": "16",
+  "title": "依赖注入系统(Depends)",
+  "runMode": "local",
+  "tutorialMd": "# Ch16 · 依赖注入系统(Depends)\n\n> **预计**:1 天 ｜ **前置**:Ch15 ｜ **重点**\n> **目标**:理解 FastAPI 最强大的设计——**依赖注入**(Depends,对比 Spring `@Autowired`)。把鉴权、分页、DB session 等「跨端点共享的逻辑」抽成可复用的依赖,端点声明「我需要 X」,FastAPI 自动解析注入。\n\n> 📐 **本教程的契约**:三种依赖模式(§16.2–§16.5)都已定义好,你填端点体练习「用 Depends 注入」。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `list_products` | §16.2 | 用 Depends 注入三种依赖 |\n| `who_am_i` | §16.2 | 复用同一个依赖 |\n\n（三种依赖的定义见 §16.3–§16.5,读代码理解模式）\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 60-90 分钟)\n\n① 预览猜 → ② 写端点实现 → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. Spring 用 `@Autowired` 注入 service。FastAPI 怎么「声明我需要某个依赖」?\n2. 多个端点都要鉴权,你希望鉴权逻辑只写一处。怎么做?\n3. 端点需要 DB session 且用完要关闭(即使异常)。FastAPI 哪种依赖能保证清理?\n4. 怎么从请求头 `X-Token` 提取值并做成依赖?\n\n---\n\n## §16.1 为什么需要依赖注入\n\n问题:很多端点共享同样的「前置逻辑」——鉴权、分页解析、获取 DB session。如果每个端点都抄一遍,重复且难维护。\n\n依赖注入的思路:**把共享逻辑写成「依赖」,端点声明「我需要它」,框架自动调用并注入结果**。\n\n```python\n@app.get(\"/products\")\ndef list_products(user: str = Depends(get_current_user)):   # 声明依赖\n    # user 已经是 get_current_user() 的返回值,FastAPI 自动调用注入\n    return {\"user\": user}\n```\n\n> 🟡 **Java 对比**:= Spring `@Autowired` / 构造注入。但 FastAPI 的 Depends 更轻——不用 IoC 容器、不用 @Component 扫描,直接函数级声明。Spring 注入的是「单例 bean」,FastAPI 默认「每次请求新建」(适合 DB session 这种)。\n\n---\n\n## §16.2 Depends 基础(对应:`list_products`、`who_am_i`)🔴\n\n`Depends(依赖函数)` 放在参数默认值位置。FastAPI 在调用端点前,**先调用依赖函数**,把返回值注入到参数。\n\n```python\ndef get_current_user(x_token: str | None = Header(default=None)) -> str:\n    # 这是个普通函数,内部还能自己声明查询参数/Header(会被 FastAPI 解析)\n    if not x_token:\n        raise HTTPException(401, \"未授权\")\n    return x_token[5:]   # 返回值就是注入给端点的值\n\n@app.get(\"/me\")\ndef who_am_i(user: str = Depends(get_current_user)):   # user = get_current_user() 的返回值\n    return {\"user\": user}\n```\n\n**三个关键点**:\n1. `Depends(get_current_user)` ——声明依赖,不用调 `get_current_user()`(FastAPI 调)。\n2. 依赖函数的返回值 → 注入端点参数。\n3. 依赖函数自己也可以有参数(查询参数/Header),FastAPI 一并解析。\n4. **同一依赖多端点复用**——鉴权逻辑写一处(`/me` 和 `/products` 都用 `get_current_user`)。\n\n> ✅ 做 `list_products`/`who_am_i` 题:签名已给(含 Depends),直接用 `pagination`/`user`/`db`。\n\n---\n\n## §16.3 类依赖(本作业 `Pagination`)\n\n依赖不只返回简单值,也能返回**对象**(把多个相关参数打包):\n\n```python\nclass Pagination:\n    def __init__(self, page: int = 1, size: int = 10):\n        self.page = page\n        self.size = size\n\ndef get_pagination(page: int = 1, size: int = 10) -> Pagination:\n    return Pagination(page=page, size=size)\n\n@app.get(\"/products\")\ndef list_products(pagination: Pagination = Depends(get_pagination)):\n    pagination.page    # 用打包后的对象\n```\n\n类依赖好处:把 page/size 等一组参数封装,端点签名更干净(一个 `pagination` 而非散落的 page/size)。\n\n---\n\n## §16.4 yield 依赖:带清理的依赖(本作业 `get_db`)🔴\n\nDB session、文件句柄等资源要「用完关闭」。**yield 依赖** = 生成器写法(Ch06 @contextmanager 学过),保证清理:\n\n```python\ndef get_db():\n    session = create_session()      # ① yield 前:获取资源(setup)\n    try:\n        yield session               # ② yield 值:端点拿到的 session\n    finally:\n        session.close()             # ③ yield 后:清理(无论端点是否异常都执行)\n\n@app.get(\"/products\")\ndef list_products(db = Depends(get_db)):   # db 就是 yield 的 session\n    db.query(...)    # 用 session\n# 端点结束后(即使抛异常),session.close() 一定会被调\n```\n\n> 🤯 **这正是 Ch06 `@contextmanager` 的思路**(yield 切三段:setup/值/teardown)。FastAPI 把它用在依赖上,资源管理极优雅。Ch19 接 SQLAlchemy 时,`get_db` 就是真 DB session。\n\n---\n\n## §16.5 Header 依赖(本作业 `get_current_user`)\n\n`Header(default=None)` 从请求头提取值(`x_token` → `X-Token`,下划线自动转连字符):\n\n```python\nfrom fastapi import Header\n\ndef get_current_user(x_token: str | None = Header(default=None)) -> str:\n    #                    ↑ 参数名 x_token → 自动找请求头 X-Token\n    if not x_token:\n        raise HTTPException(401, \"未授权\")\n    return decode_token(x_token)\n```\n\n鉴权是依赖注入的经典场景:**把 token 解析 + 校验 + 401 全包在依赖里**,端点只管用 `user`。Ch21 用 JWT 真做。\n\n---\n\n## §16.6 嵌套依赖(了解)\n\n依赖可以**依赖别的依赖**(链式):\n\n```python\ndef get_token(x_token: str = Header(...)): return x_token\ndef get_current_user(token: str = Depends(get_token)):  # 这个依赖又依赖 get_token\n    return decode(token)\n@app.get(\"/x\")\ndef x(user: str = Depends(get_current_user)): ...       # FastAPI 自动解析整条链\n```\n\n---\n\n## §16.7 全局依赖 vs 路由级(了解)\n\n```python\napp = FastAPI(dependencies=[Depends(verify_api_key)])    # 全局:每个端点都跑\n@app.get(\"/x\", dependencies=[Depends(log_request)])      # 路由级:只这个端点\n```\n全局依赖常用于「整个 app 都要鉴权」。本章不深入。\n\n---\n\n## §16.8 速查:三种依赖模式\n\n| 模式 | 写法 | 用途 |\n|------|------|------|\n| 函数依赖 | `def f() -> X` + `Depends(f)` | 返回值注入(最常见) |\n| 类依赖 | `def f() -> SomeClass` | 打包多个参数 |\n| yield 依赖 | `def f(): ... yield x ...` | 需要清理的资源(DB/file) |\n\n---\n\n## §16.9 Java 老手常踩的坑 ⚠️\n\n1. **`Depends(f)` 不调 f**:写 `Depends(get_current_user)`,不是 `Depends(get_current_user())`。FastAPI 负责调。\n2. **yield 依赖忘加 try/finally**:清理代码放 finally,否则端点异常时清理漏执行。\n3. **Header 参数名 vs 头名**:`x_token` → `X-Token`(下划线转连字符)。要别名用 `Header(alias=\"...\")`。\n4. **依赖默认每次请求新建**:不是单例(除非用 `Depends(use_cache=True)`)。DB session 就是要每请求新建。\n5. **依赖抛 HTTPException 会短路**:依赖里 `raise HTTPException(401)`,端点不会执行,直接返 401。这是鉴权依赖的原理。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `list_products` | 用 3 个 Depends | 🟡 |\n| `who_am_i` | 复用依赖 | 🟢 |\n\n（读懂三种依赖定义 §16.3–§16.5 是前提）\n\n```bash\nuv run pytest 03_web_framework/ch16/test_ch16_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清「Depends 怎么工作:声明 → 框架调用 → 注入返回值」\n- [ ] 能解释 yield 依赖如何保证资源清理(对应 @contextmanager)\n- [ ] 知道鉴权依赖(get_current_user)为什么能在多端点复用、抛 401 如何短路\n- [ ] 2 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「FastAPI 的 Depends 和 Spring @Autowired 有什么异同?为什么说它更轻?」— 重读 §16.1/§16.2\n2. 「yield 依赖怎么保证 DB session 一定被关闭?它和 Ch06 的 @contextmanager 什么关系?」— 重读 §16.4\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh16 掌握后,进 **Ch17 · 中间件、CORS、异常处理**——给 API 加请求日志中间件(= Servlet Filter)、统一异常处理、跨域 CORS。M3 第一批(Ch13-17)收尾。\n",
+  "assignment": "\"\"\"\nCh16 作业:依赖注入(Depends)—— FastAPI 最强大的设计之一。\n\n三种依赖都已定义好(读代码理解三种模式):① 分页(类依赖)② 当前用户(Header 鉴权)\n③ DB session(yield 依赖)。你填两个端点的实现,用 Depends() 注入的依赖。\n\n    uv run pytest 03_web_framework/ch16/test_ch16_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import Depends, FastAPI, Header, HTTPException\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"依赖注入演示\")\n\n\nclass Product(BaseModel):\n    id: int\n    name: str\n    price: float\n\n\nPRODUCTS: list[Product] = [\n    Product(id=1, name=\"机械键盘\", price=599.0),\n    Product(id=2, name=\"无线鼠标\", price=159.0),\n    Product(id=3, name=\"设计模式\", price=75.5),\n    Product(id=4, name=\"Python编程\", price=89.0),\n    Product(id=5, name=\"降噪耳机\", price=1299.0),\n]\n\n\n# ---------- 依赖 1:分页参数(类依赖,见 §16.3)----------\n\n\nclass Pagination:\n    \"\"\"把 page/size 打包,多端点复用。\"\"\"\n    def __init__(self, page: int = 1, size: int = 10):\n        self.page = page\n        self.size = size\n\n\ndef get_pagination(page: int = 1, size: int = 10) -> Pagination:\n    \"\"\"依赖函数:FastAPI 先解析 page/size(查询参数),再构造 Pagination 返回。\"\"\"\n    return Pagination(page=page, size=size)\n\n\n# ---------- 依赖 2:当前用户(Header 鉴权,见 §16.5)----------\n\n\ndef get_current_user(x_token: str | None = Header(default=None)) -> str:\n    \"\"\"从 X-Token 头解析用户(模拟鉴权)。无效/缺失 → 401;有效 → 返回用户名。\"\"\"\n    if not x_token or x_token == \"invalid\":\n        raise HTTPException(status_code=401, detail=\"未授权\")\n    if x_token.startswith(\"user-\"):\n        return x_token[5:]\n    raise HTTPException(status_code=401, detail=\"token 无效\")\n\n\n# ---------- 依赖 3:DB session(yield 依赖,见 §16.4)----------\n\n\ndef get_db():\n    \"\"\"模拟 DB session(Ch19 接真 DB)。\n    yield 前=获取资源;yield 值=端点拿到的 session;yield 后=清理(总执行)。\"\"\"\n    session = {\"query_count\": 0}\n    try:\n        yield session\n    finally:\n        pass                            # 模拟 session.close()\n\n\n# ---------- 端点:用 Depends 注入 ----------\n\n\n@app.get(\"/products\")\ndef list_products(\n    pagination: Pagination = Depends(get_pagination),\n    user: str = Depends(get_current_user),\n    db: dict = Depends(get_db),\n):\n    \"\"\"\n    【用 Depends 注入 · §16.2】签名里三个参数都用 Depends(),FastAPI 自动解析并注入。\n    你直接用 pagination / user / db 当普通对象。\n\n    思路:\n        db[\"query_count\"] += 1                                   # 用 db 依赖(模拟查询)\n        start = (pagination.page - 1) * pagination.size          # 用 pagination 依赖\n        return {\n            \"items\": [p.model_dump() for p in PRODUCTS[start:start + pagination.size]],\n            \"page\": pagination.page, \"size\": pagination.size, \"user\": user,\n        }\n    \"\"\"\n    # TODO: 用 pagination 分页、db 计数、user 返回。返回 dict(items/page/size/user)\n    ...\n\n\n@app.get(\"/me\")\ndef who_am_i(user: str = Depends(get_current_user)):\n    \"\"\"\n    【复用依赖 · §16.2】/me 只依赖当前用户(复用同一个 get_current_user)。\n    同一个依赖函数可在多个端点复用,鉴权逻辑只写一处。\n\n    思路:return {\"user\": user}\n    \"\"\"\n    # TODO: 返回 {\"user\": user}\n    ...\n",
+  "testName": "ch16_assignment",
+  "testSource": "\"\"\"\nCh16 作业测试。运行: uv run pytest 03_web_framework/ch16/test_ch16_assignment.py -v\n\"\"\"\nfrom fastapi.testclient import TestClient\n\nfrom ch16_assignment import app\n\nclient = TestClient(app)\n\n\ndef auth(user: str = \"alice\") -> dict:\n    \"\"\"构造带合法 X-Token 的请求头。\"\"\"\n    return {\"X-Token\": f\"user-{user}\"}\n\n\n# ---------- 依赖 1:分页(类依赖)----------\nclass TestPaginationDep:\n    def test_list_with_auth(self):\n        resp = client.get(\"/products\", headers=auth())\n        assert resp.status_code == 200\n        data = resp.json()\n        assert \"items\" in data\n        assert data[\"page\"] == 1\n\n    def test_pagination_size(self):\n        resp = client.get(\"/products\", params={\"page\": 1, \"size\": 2}, headers=auth())\n        data = resp.json()\n        assert len(data[\"items\"]) == 2\n        assert data[\"size\"] == 2\n\n    def test_page2(self):\n        resp = client.get(\"/products\", params={\"page\": 2, \"size\": 2}, headers=auth())\n        assert resp.json()[\"items\"][0][\"id\"] == 3\n\n\n# ---------- 依赖 2:当前用户(鉴权)----------\nclass TestAuthDep:\n    def test_no_token_401(self):\n        # 没有 X-Token 头 → 依赖抛 401\n        assert client.get(\"/products\").status_code == 401\n\n    def test_invalid_token_401(self):\n        resp = client.get(\"/products\", headers={\"X-Token\": \"invalid\"})\n        assert resp.status_code == 401\n\n    def test_garbage_token_401(self):\n        resp = client.get(\"/products\", headers={\"X-Token\": \"garbage\"})\n        assert resp.status_code == 401\n\n    def test_user_injected_into_response(self):\n        # 依赖返回的 user 被端点使用并返回\n        resp = client.get(\"/products\", headers=auth(\"bob\"))\n        assert resp.json()[\"user\"] == \"bob\"\n\n    def test_me_endpoint(self):\n        assert client.get(\"/me\", headers=auth(\"alice\")).json() == {\"user\": \"alice\"}\n\n    def test_me_no_token_401(self):\n        # /me 也依赖 get_current_user,复用同一鉴权逻辑\n        assert client.get(\"/me\").status_code == 401\n\n\n# ---------- 依赖 3:DB session(yield 依赖)----------\nclass TestYieldDep:\n    def test_db_injected_and_usable(self):\n        # 端点里 db[\"query_count\"] += 1,说明 yield 依赖注入的 db 被正常使用\n        resp = client.get(\"/products\", headers=auth())\n        assert resp.status_code == 200\n\n    def test_yield_dep_runs_per_request(self):\n        # 每次请求都重新跑 get_db(新 session,query_count 从 0 开始)\n        client.get(\"/products\", headers=auth())\n        resp2 = client.get(\"/products\", headers=auth())\n        assert resp2.status_code == 200\n",
+  "reviewMd": "# Ch16 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | `Depends(f)` 怎么工作?和 Spring @Autowired 异同? | 端点声明 `param=Depends(f)`,FastAPI 调 f 把返回值注入 param。同:都是 DI。异:FastAPI 函数级、无 IoC 容器、默认每请求新建(适合 session);Spring 注入单例 bean | ⬜ |\n| 2 | 三种依赖模式各是什么? | ① 函数依赖(返值注入)② 类依赖(打包多参数,返对象)③ yield 依赖(setup/yield值/teardown,需清理的资源) | ⬜ |\n| 3 | yield 依赖如何保证 DB session 关闭?对应 Ch06 什么? | yield 前=获取资源,yield 值=注入,yield 后放 finally=清理(总执行,即使异常)。= Ch06 的 @contextmanager 三段套路 | ⬜ |\n| 4 | `Depends(get_current_user)` 还是 `Depends(get_current_user())`? | **前者**(不调)!Depends 接收函数本身,FastAPI 负责调用。后者会立刻调用一次,错 | ⬜ |\n| 5 | 鉴权依赖(get_current_user)为什么能在多端点复用?抛 401 会怎样? | 同一依赖函数多个端点 Depends,鉴权逻辑只写一处。依赖里 raise HTTPException(401) 会【短路】:端点不执行,直接返 401 | ⬜ |\n| 6 | `Header(default=None)` 怎么用?x_token 对应哪个头? | 从请求头提取值。参数名 x_token → 自动找 X-Token 头(下划线转连字符)。default=None 表示可选 | ⬜ |\n| 7 | 依赖默认是单例吗? | **不是**,默认每次请求新建(适合 DB session)。要单例用 `Depends(f, use_cache=True)` | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「Depends 的工作机制 + vs Spring @Autowired」?\n- [ ] 能说清「yield 依赖保证清理,对应 @contextmanager」?\n- [ ] 能说清「鉴权依赖复用 + 401 短路」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:1 天 ｜ **前置**:Ch15 ｜ **重点**\n> **目标**:理解 FastAPI 最强大的设计——**依赖注入**(Depends,对比 Spring `@Autowired`)。把鉴权、分页、DB session 等「跨端点共享的逻辑」抽成可复用的依赖,端点声明「我需要 X」,FastAPI 自动解析注入。\n\n> 📐 **本教程的契约**:三种依赖模式(§16.2–§16.5)都已定义好,你填端点体练习「用 Depends 注入」。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `list_products` | §16.2 | 用 Depends 注入三种依赖 |\n| `who_am_i` | §16.2 | 复用同一个依赖 |\n\n（三种依赖的定义见 §16.3–§16.5,读代码理解模式）\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-60-90-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 60-90 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写端点实现 → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Spring 用 `@Autowired` 注入 service。FastAPI 怎么「声明我需要某个依赖」?\n2. 多个端点都要鉴权,你希望鉴权逻辑只写一处。怎么做?\n3. 端点需要 DB session 且用完要关闭(即使异常)。FastAPI 哪种依赖能保证清理?\n4. 怎么从请求头 `X-Token` 提取值并做成依赖?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.1",
+      "heading": "§16.1 为什么需要依赖注入",
+      "secNum": "16.1",
+      "body": "问题:很多端点共享同样的「前置逻辑」——鉴权、分页解析、获取 DB session。如果每个端点都抄一遍,重复且难维护。\n\n依赖注入的思路:**把共享逻辑写成「依赖」,端点声明「我需要它」,框架自动调用并注入结果**。\n\n```python\n@app.get(\"/products\")\ndef list_products(user: str = Depends(get_current_user)):   # 声明依赖\n    # user 已经是 get_current_user() 的返回值,FastAPI 自动调用注入\n    return {\"user\": user}\n```\n\n> 🟡 **Java 对比**:= Spring `@Autowired` / 构造注入。但 FastAPI 的 Depends 更轻——不用 IoC 容器、不用 @Component 扫描,直接函数级声明。Spring 注入的是「单例 bean」,FastAPI 默认「每次请求新建」(适合 DB session 这种)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.2",
+      "heading": "§16.2 Depends 基础(对应:`list_products`、`who_am_i`)🔴",
+      "secNum": "16.2",
+      "body": "`Depends(依赖函数)` 放在参数默认值位置。FastAPI 在调用端点前,**先调用依赖函数**,把返回值注入到参数。\n\n```python\ndef get_current_user(x_token: str | None = Header(default=None)) -> str:\n    # 这是个普通函数,内部还能自己声明查询参数/Header(会被 FastAPI 解析)\n    if not x_token:\n        raise HTTPException(401, \"未授权\")\n    return x_token[5:]   # 返回值就是注入给端点的值\n\n@app.get(\"/me\")\ndef who_am_i(user: str = Depends(get_current_user)):   # user = get_current_user() 的返回值\n    return {\"user\": user}\n```\n\n**三个关键点**:\n1. `Depends(get_current_user)` ——声明依赖,不用调 `get_current_user()`(FastAPI 调)。\n2. 依赖函数的返回值 → 注入端点参数。\n3. 依赖函数自己也可以有参数(查询参数/Header),FastAPI 一并解析。\n4. **同一依赖多端点复用**——鉴权逻辑写一处(`/me` 和 `/products` 都用 `get_current_user`)。\n\n> ✅ 做 `list_products`/`who_am_i` 题:签名已给(含 Depends),直接用 `pagination`/`user`/`db`。\n\n---",
+      "exerciseFunctions": [
+        "list_products",
+        "who_am_i"
+      ]
+    },
+    {
+      "id": "sec-16.3",
+      "heading": "§16.3 类依赖(本作业 `Pagination`)",
+      "secNum": "16.3",
+      "body": "依赖不只返回简单值,也能返回**对象**(把多个相关参数打包):\n\n```python\nclass Pagination:\n    def __init__(self, page: int = 1, size: int = 10):\n        self.page = page\n        self.size = size\n\ndef get_pagination(page: int = 1, size: int = 10) -> Pagination:\n    return Pagination(page=page, size=size)\n\n@app.get(\"/products\")\ndef list_products(pagination: Pagination = Depends(get_pagination)):\n    pagination.page    # 用打包后的对象\n```\n\n类依赖好处:把 page/size 等一组参数封装,端点签名更干净(一个 `pagination` 而非散落的 page/size)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.4",
+      "heading": "§16.4 yield 依赖:带清理的依赖(本作业 `get_db`)🔴",
+      "secNum": "16.4",
+      "body": "DB session、文件句柄等资源要「用完关闭」。**yield 依赖** = 生成器写法(Ch06 @contextmanager 学过),保证清理:\n\n```python\ndef get_db():\n    session = create_session()      # ① yield 前:获取资源(setup)\n    try:\n        yield session               # ② yield 值:端点拿到的 session\n    finally:\n        session.close()             # ③ yield 后:清理(无论端点是否异常都执行)\n\n@app.get(\"/products\")\ndef list_products(db = Depends(get_db)):   # db 就是 yield 的 session\n    db.query(...)    # 用 session\n# 端点结束后(即使抛异常),session.close() 一定会被调\n```\n\n> 🤯 **这正是 Ch06 `@contextmanager` 的思路**(yield 切三段:setup/值/teardown)。FastAPI 把它用在依赖上,资源管理极优雅。Ch19 接 SQLAlchemy 时,`get_db` 就是真 DB session。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.5",
+      "heading": "§16.5 Header 依赖(本作业 `get_current_user`)",
+      "secNum": "16.5",
+      "body": "`Header(default=None)` 从请求头提取值(`x_token` → `X-Token`,下划线自动转连字符):\n\n```python\nfrom fastapi import Header\n\ndef get_current_user(x_token: str | None = Header(default=None)) -> str:\n    #                    ↑ 参数名 x_token → 自动找请求头 X-Token\n    if not x_token:\n        raise HTTPException(401, \"未授权\")\n    return decode_token(x_token)\n```\n\n鉴权是依赖注入的经典场景:**把 token 解析 + 校验 + 401 全包在依赖里**,端点只管用 `user`。Ch21 用 JWT 真做。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.6",
+      "heading": "§16.6 嵌套依赖(了解)",
+      "secNum": "16.6",
+      "body": "依赖可以**依赖别的依赖**(链式):\n\n```python\ndef get_token(x_token: str = Header(...)): return x_token\ndef get_current_user(token: str = Depends(get_token)):  # 这个依赖又依赖 get_token\n    return decode(token)\n@app.get(\"/x\")\ndef x(user: str = Depends(get_current_user)): ...       # FastAPI 自动解析整条链\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.7",
+      "heading": "§16.7 全局依赖 vs 路由级(了解)",
+      "secNum": "16.7",
+      "body": "```python\napp = FastAPI(dependencies=[Depends(verify_api_key)])    # 全局:每个端点都跑\n@app.get(\"/x\", dependencies=[Depends(log_request)])      # 路由级:只这个端点\n```\n全局依赖常用于「整个 app 都要鉴权」。本章不深入。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.8",
+      "heading": "§16.8 速查:三种依赖模式",
+      "secNum": "16.8",
+      "body": "| 模式 | 写法 | 用途 |\n|------|------|------|\n| 函数依赖 | `def f() -> X` + `Depends(f)` | 返回值注入(最常见) |\n| 类依赖 | `def f() -> SomeClass` | 打包多个参数 |\n| yield 依赖 | `def f(): ... yield x ...` | 需要清理的资源(DB/file) |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-16.9",
+      "heading": "§16.9 Java 老手常踩的坑 ⚠️",
+      "secNum": "16.9",
+      "body": "1. **`Depends(f)` 不调 f**:写 `Depends(get_current_user)`,不是 `Depends(get_current_user())`。FastAPI 负责调。\n2. **yield 依赖忘加 try/finally**:清理代码放 finally,否则端点异常时清理漏执行。\n3. **Header 参数名 vs 头名**:`x_token` → `X-Token`(下划线转连字符)。要别名用 `Header(alias=\"...\")`。\n4. **依赖默认每次请求新建**:不是单例(除非用 `Depends(use_cache=True)`)。DB session 就是要每请求新建。\n5. **依赖抛 HTTPException 会短路**:依赖里 `raise HTTPException(401)`,端点不会执行,直接返 401。这是鉴权依赖的原理。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `list_products` | 用 3 个 Depends | 🟡 |\n| `who_am_i` | 复用依赖 | 🟢 |\n\n（读懂三种依赖定义 §16.3–§16.5 是前提）\n\n```bash\nuv run pytest 03_web_framework/ch16/test_ch16_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清「Depends 怎么工作:声明 → 框架调用 → 注入返回值」\n- [ ] 能解释 yield 依赖如何保证资源清理(对应 @contextmanager)\n- [ ] 知道鉴权依赖(get_current_user)为什么能在多端点复用、抛 401 如何短路\n- [ ] 2 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「FastAPI 的 Depends 和 Spring @Autowired 有什么异同?为什么说它更轻?」— 重读 §16.1/§16.2\n2. 「yield 依赖怎么保证 DB session 一定被关闭?它和 Ch06 的 @contextmanager 什么关系?」— 重读 §16.4",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch16 掌握后,进 **Ch17 · 中间件、CORS、异常处理**——给 API 加请求日志中间件(= Servlet Filter)、统一异常处理、跨域 CORS。M3 第一批(Ch13-17)收尾。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "get_pagination",
+      "testClass": "TestGetPagination",
+      "skeleton": "def get_pagination(page: int = 1, size: int = 10) -> Pagination:\n    \"\"\"依赖函数:FastAPI 先解析 page/size(查询参数),再构造 Pagination 返回。\"\"\"\n    ..."
+    },
+    {
+      "name": "get_current_user",
+      "testClass": "TestGetCurrentUser",
+      "skeleton": "def get_current_user(x_token: str | None = Header(default=None)) -> str:\n    \"\"\"从 X-Token 头解析用户(模拟鉴权)。无效/缺失 → 401;有效 → 返回用户名。\"\"\"\n    ..."
+    },
+    {
+      "name": "get_db",
+      "testClass": "TestGetDb",
+      "skeleton": "def get_db():\n    \"\"\"模拟 DB session(Ch19 接真 DB)。\n    yield 前=获取资源;yield 值=端点拿到的 session;yield 后=清理(总执行)。\"\"\"\n    ..."
+    },
+    {
+      "name": "list_products",
+      "testClass": "TestListProducts",
+      "skeleton": "@app.get(\"/products\")\ndef list_products(\n    ..."
+    },
+    {
+      "name": "who_am_i",
+      "testClass": "TestWhoAmI",
+      "skeleton": "@app.get(\"/me\")\ndef who_am_i(user: str = Depends(get_current_user)):\n    \"\"\"\n    【复用依赖 · §16.2】/me 只依赖当前用户(复用同一个 get_current_user)。\n    同一个依赖函数可在多个端点复用,鉴权逻辑只写一处。\n\n    思路:return {\"user\": user}\n    \"\"\"\n    # TODO: 返回 {\"user\": user}\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh16 作业:依赖注入(Depends)—— FastAPI 最强大的设计之一。\n\n三种依赖都已定义好(读代码理解三种模式):① 分页(类依赖)② 当前用户(Header 鉴权)\n③ DB session(yield 依赖)。你填两个端点的实现,用 Depends() 注入的依赖。\n\n    uv run pytest 03_web_framework/ch16/test_ch16_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import Depends, FastAPI, Header, HTTPException\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"依赖注入演示\")\n\n\nclass Product(BaseModel):\n    id: int\n    name: str\n    price: float\n\n\nPRODUCTS: list[Product] = [\n    Product(id=1, name=\"机械键盘\", price=599.0),\n    Product(id=2, name=\"无线鼠标\", price=159.0),\n    Product(id=3, name=\"设计模式\", price=75.5),\n    Product(id=4, name=\"Python编程\", price=89.0),\n    Product(id=5, name=\"降噪耳机\", price=1299.0),\n]\n\n\n# ---------- 依赖 1:分页参数(类依赖,见 §16.3)----------\n\n\nclass Pagination:\n    \"\"\"把 page/size 打包,多端点复用。\"\"\"\n    def __init__(self, page: int = 1, size: int = 10):\n        self.page = page\n        self.size = size\n\n\n# ---------- 依赖 2:当前用户(Header 鉴权,见 §16.5)----------\n\n\n# ---------- 依赖 3:DB session(yield 依赖,见 §16.4)----------\n\n\n# ---------- 端点:用 Depends 注入 ----------\n\n\n):\n    \"\"\"\n    【用 Depends 注入 · §16.2】签名里三个参数都用 Depends(),FastAPI 自动解析并注入。\n    你直接用 pagination / user / db 当普通对象。\n\n    思路:\n        db[\"query_count\"] += 1                                   # 用 db 依赖(模拟查询)\n        start = (pagination.page - 1) * pagination.size          # 用 pagination 依赖\n        return {\n            \"items\": [p.model_dump() for p in PRODUCTS[start:start + pagination.size]],\n            \"page\": pagination.page, \"size\": pagination.size, \"user\": user,\n        }\n    \"\"\"\n    # TODO: 用 pagination 分页、db 计数、user 返回。返回 dict(items/page/size/user)\n    ..."
+}

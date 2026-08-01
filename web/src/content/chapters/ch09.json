@@ -1,0 +1,164 @@
+{
+  "id": "ch09",
+  "num": "09",
+  "title": "itertools + functools:函数式利器",
+  "runMode": "pyodide",
+  "tutorialMd": "# Ch09 · itertools + functools:函数式利器\n\n> **预计**:0.5 天 ｜ **前置**:Ch08 ｜ **M2 第二章**\n> **目标**:掌握 Python 函数式编程两大支柱——`itertools`(迭代器组合,对比 Java Stream 但更强大)和 `functools`(`reduce`、`lru_cache` 记忆化)。刷题和数据处理的神器。\n\n> 📐 **本教程的契约**:下面每一节(§9.1–§9.5)都**精确对应**作业里的一个任务。讲过的才考,考的必讲过。\n\n---\n\n## 🗺️ 本章地图\n\n读完这章 + 完成作业,你将能够:\n- 用 `itertools.chain` 串联多个序列、`groupby` 分组(注意先排序)、`combinations` 组合\n- 用 `functools.reduce` 做累积运算(= Java `stream.reduce`)\n- 用 `functools.lru_cache` 一行实现记忆化(刷题神器,Java 要手写 Map 缓存)\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `flatten` | §9.1 | itertools.chain |\n| `group_by_sorted` | §9.2 | itertools.groupby(先排序) |\n| `pair_combinations` | §9.3 | itertools.combinations |\n| `multiply_all` | §9.4 | functools.reduce |\n| `cached_fib` | §9.5 | functools.lru_cache |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45-60 分钟)\n\n| 步 | 你要做 | 在哪做 |\n|----|--------|--------|\n| ① 预览猜 | 先猜 Python 怎么写 | 本页 ① |\n| ② 先动手 | 打开 `ch09_assignment.py`,先写 | assignment |\n| ③ 提取+反馈 | 写完 → `uv run pytest` 红绿 | test |\n| ④ 费曼 | 讲清\"groupby 为何要先排序\"\"lru_cache 怎么提速\" | 本页 ④ |\n| ⑤ 存闪卡 | 标 [`review.md`](./review.md) 复习日期 | review.md |\n\n---\n\n## ① 预览猜\n\n1. Java 把多个 Stream 拼起来要 `Stream.concat` 套娃。Python 一个函数叫?\n2. Java 按 key 分组用 `Collectors.groupingBy`,稳定正确。Python 的 `groupby` 有个必须注意的前置步骤,是什么?\n3. Java 求阶乘/连乘用 `stream.reduce(1, (a,b)->a*b)`。Python 对应什么?\n4. Java 写递归斐波那契会慢到不可用,要手写 `Map` 缓存或用 Guava。Python 一个装饰器搞定,叫?\n5. 列出 [a,b,c] 所有两两配对,Java 要双重循环,Python 一个函数?\n\n---\n\n## §9.1 itertools.chain:串联多个序列(对应:`flatten`)🟢\n\n`chain` 把多个可迭代对象首尾相接,像一条流。比「列表相加 `+`」省内存(不创建中间列表)。\n\n```python\nfrom itertools import chain\n\nlist(chain([1,2], [3,4], [5]))     # [1,2,3,4,5]\nlist(chain(\"ab\", \"cd\"))            # ['a','b','c','d']\n\n# chain.from_iterable 接收一个「列表的列表」(不用打星号)\nlist(chain.from_iterable([[1,2],[3,4]]))   # [1,2,3,4]\n```\n\n> 🟡 **Java 对比**:= `Stream.concat(s1, s2)`(但只能拼两个,套娃很难看)。Python `chain` 一次拼任意多个。\n>\n> `flatten(*lists)` 用 `chain(*lists)` 把传入的多个列表打撒星号喂给 chain。\n\n> ✅ 做 `flatten` 题:`list(chain(*lists))`。\n\n---\n\n## §9.2 itertools.groupby:分组(对应:`group_by_sorted`)🔴\n\n⚠️ **本章最大的坑**:`groupby` 只合并**相邻**的相同 key,不是全局分组!\n\n```python\nfrom itertools import groupby\n\n# ❌ 不排序直接 groupby:[1,2,1] 会被切成三段\n[(k, list(g)) for k, g in groupby([1,2,1])]\n# [(1, [1]), (2, [2]), (1, [1])]   ← 两个 1 没合并!\n\n# ✅ 先排序,再 groupby\nordered = sorted([1,2,1,3,2])\n{k: list(g) for k, g in groupby(ordered)}\n# {1: [1, 1], 2: [2, 2], 3: [3]}   ← 正确合并\n```\n\n**为什么这样设计**?`groupby` 是**惰性流式**的——它边遍历边产出,不预先把全部数据读进内存。代价是只能看到「当前连续段」。要全局分组,你得先排序(让它变成连续的)。\n\n> 🤯 **Java 对比**:Java 的 `Collectors.groupingBy` 是「收完再分」,自动正确;Python 的 `groupby` 是「流式分组」,要手动排序。各有利弊:Python 版能处理流式/无限数据(配合 sorted 不行,但配合已有序列可以)。日常分组其实 Ch08 的 `defaultdict` 更稳,**`groupby` 主要用于数据已排序的场景**(如按时间已排好的日志)。\n\n### 标准用法(本节作业)\n\n```python\ndef group_by_sorted(items, key_func):\n    ordered = sorted(items, key=key_func)             # ① 先按 key 排序\n    return {k: list(g) for k, g in groupby(ordered, key=key_func)}  # ② 再分组\n```\n\n注意 `groupby(可迭代, key=函数)`:key 函数指定「按什么分组」(如 `lambda log: log[\"status\"]`)。`g` 是个迭代器,要 `list(g)` 物化(否则用完即弃)。\n\n> ✅ 做 `group_by_sorted` 题:见上。\n\n---\n\n## §9.3 itertools.combinations:组合(对应:`pair_combinations`)🟢\n\n```python\nfrom itertools import combinations\n\nlist(combinations([\"a\",\"b\",\"c\"], 2))   # [('a','b'),('a','c'),('b','c')]\nlist(combinations([1,2,3], 3))         # [(1,2,3)]   全选\n# combinations(序列, r):从 n 个里选 r 个的所有组合(不计顺序)\n```\n\n### 顺带认识兄弟函数(本章不出题,刷题常用)\n\n| 函数 | 含义 | 示例(items=[1,2,3]) |\n|------|------|---------------------|\n| `combinations(items, r)` | 组合(不计顺序) | `(1,2),(1,3),(2,3)` |\n| `permutations(items, r)` | 排列(计顺序) | `(1,2),(2,1),(1,3),...` |\n| `product(items, repeat=n)` | 笛卡尔积 | `repeat=2` → `(1,1),(1,2),...` |\n| `islice(iterable, n)` | 切片前 n 个(迭代器版) | 惰性取前 n |\n\n> 🟡 **Java 对比**:Java 没有内置组合/排列工具,要手写回溯或用 Guava。Python 标准库直接给。LeetCode 回溯题(Ch40)会大量用。\n\n> ✅ 做 `pair_combinations` 题:`list(combinations(items, 2))`。\n\n---\n\n## §9.4 functools.reduce:累积运算(对应:`multiply_all`)🟡\n\n`reduce(函数, 可迭代, 初始值)` 反复把「函数」作用到累积值和下一个元素上,最终得到一个结果。\n\n```python\nfrom functools import reduce\nfrom operator import mul, add\n\nreduce(mul, [2,3,4], 1)    # ((1*2)*3)*4 = 24   连乘\nreduce(add, [1,2,3,4], 0)  # ((0+1)+2)+3+4 = 10  连加(等价于 sum)\n```\n\n### 三要素\n\n- **函数**:接受 `(累积值, 当前元素)`,返回新累积值。`mul` = `lambda a,b: a*b`。\n- **初始值**:reduce 的第三个参数。空可迭代时返回它(`reduce(mul, [], 1)` = 1)。不传则用第一个元素当初始值(空序列会报错)。\n- `operator` 模块提供 `mul`/`add`/`or_` 等运算符的函数形式,省得写 lambda。\n\n> 🟡 **Java 对比**:= `stream.reduce(identity, accumulator)`。`reduce(mul, nums, 1)` ≈ `nums.stream().reduce(1, (a,b)->a*b)`。\n>\n> 注意:Python 社区**不太推荐**滥用 reduce——简单的求和用 `sum()`,简单的连乘用 for 循环更可读。reduce 适合「真正需要累积」的场景。\n\n> ✅ 做 `multiply_all` 题:`reduce(mul, nums, 1)`(mul 从 operator 导入)。\n\n---\n\n## §9.5 functools.lru_cache:记忆化(对应:`cached_fib`)🔴\n\n**一行装饰器,自动缓存函数结果**——相同入参直接返回缓存,不重算。递归优化的神器。\n\n```python\nfrom functools import lru_cache\n\n@lru_cache(maxsize=None)      # None = 无限缓存;也可填数字(如 128)\ndef fib(n):\n    if n < 2:\n        return n\n    return fib(n-1) + fib(n-2)\n\nfib(100)    # 秒算!没缓存的话,这个递归复杂度是 O(2^n),100 根本算不完\n```\n\n### 为什么这么强?\n\n递归 fib 没有 lru_cache 时,`fib(5)` 会重复算 `fib(3)`、`fib(2)` 很多次(指数爆炸)。加了 lru_cache,每个 n 只算一次,后续命中缓存 → 复杂度降到 O(n)。\n\n### 调试工具:`cache_info()`\n\n```python\nfib(50)\nfib.cache_info()\n# CacheInfo(hits=49, misses=51, maxsize=None, currsize=51)\n#                ↑ 命中次数   ↑ 未命中(实际计算)次数\n```\n\n### 适用条件(重要!)\n\nlru_cache 只适合**纯函数**(相同输入永远相同输出,无副作用):\n- ✅ 数学计算(fib、阶乘)、数据查询缓存\n- ❌ 依赖外部状态(时间、随机数、数据库)的函数——缓存会失效或出错\n- ❌ 参数不可哈希(list/dict 当参数)——lru_cache 用参数当字典键,不可哈希会报错\n\n> 🤯 **Java 对比**:Java 要手写 `Map<Input,Output>` 缓存逻辑,或用 Guava `CacheBuilder`。Python 一个 `@lru_cache` 装饰器搞定。这就是装饰器的威力(Ch04 学过)。\n\n> ✅ 做 `cached_fib` 题:`def` 上一行加 `@lru_cache(maxsize=None)`,写普通递归。\n\n---\n\n## §9.6 functools.partial:偏函数(了解,本章不考)\n\n`partial(函数, *固定参数)` 把一个函数的某些参数「固定」,生成新函数(= 柯里化的替代)。\n\n```python\nfrom functools import partial\nfrom operator import mul\n\ndouble = partial(mul, 2)     # 固定第一个参数为 2\ndouble(5)                    # 10\ndouble(10)                   # 20\n\n# 等价于 Ch04 的闭包 make_multiplier(2),但 partial 更简洁\n```\n\n知道有这个工具即可。\n\n---\n\n## §9.7 Java 老手常踩的坑 ⚠️\n\n1. **`groupby` 忘排序**:得到破碎的分组。记住:groupby = 排序 + 分组,缺一不可。日常分组更推荐 Ch08 的 `defaultdict`。\n2. **`groupby` 的 `g` 是迭代器**:`list(g)` 物化后才能反复用,否则用完即弃。\n3. **`reduce` 漏写初始值**:空序列会报错(或行为不符预期)。需要「空输入有合理默认」时,传第三个参数(如乘法传 1、加法传 0)。\n4. **`lru_cache` 用在非纯函数**:依赖时间/随机/外部状态的函数加了缓存会出错。\n5. **`lru_cache` 参数不可哈希**:传 list/dict 当参数会报错。可哈希才行(int/str/tuple/冻结集合)。\n\n---\n\n## 📝 本章作业\n\n打开 **`ch09_assignment.py`**,5 个任务。\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `flatten` | itertools.chain | 🟢 |\n| `group_by_sorted` | itertools.groupby(先排序) | 🟡 |\n| `pair_combinations` | itertools.combinations | 🟢 |\n| `multiply_all` | functools.reduce | 🟡 |\n| `cached_fib` | functools.lru_cache | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch09/test_ch09_assignment.py -v\n```\n全绿 = 掌握 Ch09。\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清「groupby 为何必须先排序?它和 defaultdict 分组有何区别」(§9.2)\n- [ ] 能解释 lru_cache 为何能把递归 fib 从 O(2ⁿ) 降到 O(n),以及它的适用条件(§9.5)\n- [ ] 知道 reduce 的初始值参数有什么用(§9.4)\n- [ ] 5 个作业全绿\n\n---\n\n## 🎓 费曼挑战\n\n1. 「groupby 为什么只合并相邻的 key?要正确全局分组得怎么做?」— 重读 §9.2\n2. 「lru_cache 是怎么让递归斐波那契变快的?什么情况下不能用?」— 重读 §9.5\n3. 「itertools 和 Java Stream 相比,各自的设计哲学是什么?」— 重读 §9.1/§9.3\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh09 掌握后,进 **Ch10 · 正则表达式**——从 nginx 日志里一行提取 IP/method/path/status,对比 Java `Pattern`/`Matcher`。\n",
+  "assignment": "\"\"\"\nCh09 作业:itertools + functools —— 函数式利器。\n\n5 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch09/test_ch09_assignment.py -v\n\n全绿 = 你掌握了 Ch09。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom functools import lru_cache, reduce\nfrom itertools import chain, combinations, groupby\nfrom operator import mul\n\n\n# ========== §9.1 itertools.chain ==========\n\n\ndef flatten(*lists):\n    \"\"\"\n    【chain · §9.1】把传入的多个列表【串联】成一条流,返回扁平化的 list。\n\n    示例:\n        flatten([1,2], [3,4])       -> [1,2,3,4]\n        flatten([1], [2,3], [4])    -> [1,2,3,4]\n\n    思路:itertools.chain(*lists) 把多个可迭代对象首尾相接。包一层 list() 物化。\n    \"\"\"\n    # TODO: list(chain(*lists))\n    ...\n\n\n# ========== §9.2 itertools.groupby(必须先排序!)==========\n\n\ndef group_by_sorted(items, key_func):\n    \"\"\"\n    【groupby · §9.2】按 key_func 分组,返回 {key: [items]}。\n\n    示例:\n        group_by_sorted([1,2,1,3,2], lambda x: x)  -> {1:[1,1], 2:[2,2], 3:[3]}\n\n    ⚠️ 关键陷阱:groupby 只合并【相邻】的相同 key。所以【必须先用 sorted 排序】,\n       否则 [1,2,1] 会被分成 (1→[1])、(2→[2])、(1→[1]) 三组而不是 {1:[1,1]}。\n\n    思路:\n        ordered = sorted(items, key=key_func)\n        return {k: list(g) for k, g in groupby(ordered, key=key_func)}\n    \"\"\"\n    # TODO: 先 sorted,再 groupby 字典推导\n    ...\n\n\n# ========== §9.3 itertools.combinations ==========\n\n\ndef pair_combinations(items):\n    \"\"\"\n    【combinations · §9.3】返回所有【两两组合】,list of tuple。\n\n    示例:\n        pair_combinations([\"a\",\"b\",\"c\"])  -> [(\"a\",\"b\"),(\"a\",\"c\"),(\"b\",\"c\")]\n        pair_combinations([1,2,3,4])      -> 长度 6(= C(4,2))\n\n    思路:itertools.combinations(items, 2) 生成所有 2 元子集。包 list()。\n    \"\"\"\n    # TODO: list(combinations(items, 2))\n    ...\n\n\n# ========== §9.4 functools.reduce ==========\n\n\ndef multiply_all(nums):\n    \"\"\"\n    【reduce · §9.4】连乘所有数。空列表返回 1(乘法单位元)。\n\n    示例:\n        multiply_all([2,3,4])  -> 24\n        multiply_all([])       -> 1\n\n    思路:functools.reduce(函数, 可迭代, 初始值) 反复把函数作用到累积值上:\n        reduce(mul, [2,3,4], 1) = ((1*2)*3)*4 = 24\n        mul 从 operator 导入(就是 a*b)。第三个参数 1 是初始值(空列表时返回它)。\n    \"\"\"\n    # TODO: reduce(mul, nums, 1)\n    ...\n\n\n# ========== §9.5 functools.lru_cache ==========\n\n\n# TODO: 给下面这个函数加上 @lru_cache(maxsize=None) 装饰器(开启无限缓存)\ndef cached_fib(n):\n    \"\"\"\n    【lru_cache · §9.5】斐波那契,用 @lru_cache 记忆化,大 n 也秒算。\n    fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2)。\n\n    示例:\n        cached_fib(10)  -> 55\n        cached_fib(50)  -> 12586269025   (没缓存会慢到不可用)\n\n    思路:① 在 def 上一行加 @lru_cache(maxsize=None);\n         ② 写普通递归:if n < 2: return n; return cached_fib(n-1) + cached_fib(n-2)\n         装饰器会自动缓存每次调用的结果,重复调用直接命中。\n    \"\"\"\n    # TODO: 加 @lru_cache 装饰器 + 递归实现\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(\"flatten:\", flatten([1, 2], [3, 4]))\n    print(\"group:\", group_by_sorted([1, 2, 1, 3, 2], lambda x: x))\n    print(\"pairs:\", pair_combinations([\"a\", \"b\", \"c\"]))\n    print(\"product:\", multiply_all([2, 3, 4]))\n    print(\"fib(50):\", cached_fib(50))\n    print(\"cache_info:\", cached_fib.cache_info())\n",
+  "testName": "ch09_assignment",
+  "testSource": "\"\"\"\nCh09 作业测试。运行: uv run pytest 02_stdlib/ch09/test_ch09_assignment.py -v\n\"\"\"\nimport pytest\n\nfrom ch09_assignment import (\n    flatten,\n    group_by_sorted,\n    pair_combinations,\n    multiply_all,\n    cached_fib,\n)\nfrom conftest import load_mock_json\n\n\n@pytest.fixture\ndef access_logs():\n    return load_mock_json(\"access_logs.json\")\n\n\n# ---------- flatten:itertools.chain ----------\nclass TestFlatten:\n    def test_two_lists(self):\n        assert flatten([1, 2], [3, 4]) == [1, 2, 3, 4]\n\n    def test_three_lists(self):\n        assert flatten([1], [2, 3], [4]) == [1, 2, 3, 4]\n\n    def test_empty(self):\n        assert flatten([], []) == []\n\n    def test_accepts_tuples_too(self):\n        assert flatten((1, 2), [3]) == [1, 2, 3]\n\n\n# ---------- group_by_sorted:itertools.groupby ----------\nclass TestGroupBySorted:\n    def test_numbers(self):\n        # 先排序后分组,1 出现两次合并成一组\n        assert group_by_sorted([1, 2, 1, 3, 2], lambda x: x) == {\n            1: [1, 1], 2: [2, 2], 3: [3],\n        }\n\n    def test_by_status_from_logs(self, access_logs):\n        result = group_by_sorted(access_logs, lambda log: log[\"status\"])\n        assert len(result[200]) == 13\n        assert len(result[500]) == 3\n\n    def test_strings_by_length(self):\n        result = group_by_sorted([\"a\", \"bb\", \"c\", \"ddd\"], len)\n        assert result[1] == [\"a\", \"c\"]\n        assert result[3] == [\"ddd\"]\n\n    def test_returns_dict(self):\n        assert isinstance(group_by_sorted([1], lambda x: x), dict)\n\n\n# ---------- pair_combinations:itertools.combinations ----------\nclass TestPairCombinations:\n    def test_three_items(self):\n        assert pair_combinations([\"a\", \"b\", \"c\"]) == [\n            (\"a\", \"b\"), (\"a\", \"c\"), (\"b\", \"c\"),\n        ]\n\n    def test_count_is_n_choose_2(self):\n        assert len(pair_combinations([1, 2, 3, 4])) == 6   # C(4,2)\n\n    def test_two_items(self):\n        assert pair_combinations([1, 2]) == [(1, 2)]\n\n    def test_less_than_two_returns_empty(self):\n        assert pair_combinations([1]) == []\n        assert pair_combinations([]) == []\n\n\n# ---------- multiply_all:functools.reduce ----------\nclass TestMultiplyAll:\n    def test_basic(self):\n        assert multiply_all([2, 3, 4]) == 24\n\n    def test_single(self):\n        assert multiply_all([7]) == 7\n\n    def test_empty_returns_identity(self):\n        assert multiply_all([]) == 1   # 乘法单位元\n\n    def test_with_zero(self):\n        assert multiply_all([5, 0, 9]) == 0\n\n\n# ---------- cached_fib:functools.lru_cache ----------\nclass TestCachedFib:\n    def test_base_cases(self):\n        assert cached_fib(0) == 0\n        assert cached_fib(1) == 1\n\n    def test_small(self):\n        assert cached_fib(10) == 55\n\n    def test_large_fast(self):\n        # 没记忆化会慢到不可用;有 lru_cache 秒算\n        assert cached_fib(50) == 12586269025\n\n    def test_cache_hit_recorded(self):\n        cached_fib(60)\n        info = cached_fib.cache_info()\n        assert info.hits >= 1\n\n    def test_has_cache_info(self):\n        # lru_cache 装饰的函数带 cache_info / cache_clear\n        assert hasattr(cached_fib, \"cache_info\")\n",
+  "reviewMd": "# Ch09 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | `itertools.chain` 干嘛?比列表 `+` 好在哪? | 把多个可迭代对象首尾串联成一条流。比 `+` 省内存(不创建中间列表),且能拼任意可迭代对象 | ⬜ |\n| 2 | `itertools.groupby` 为什么【必须先排序】? | groupby 只合并【相邻】的相同 key(它是流式的)。不排序,[1,2,1] 会被切成三段。正确做法:`sorted()` 再 `groupby`。日常分组用 defaultdict 更稳 | ⬜ |\n| 3 | `combinations(items, r)` 和 `permutations` 区别? | combinations = 组合(不计顺序),C(n,r) 个;permutations = 排列(计顺序),P(n,r) 个。LeetCode 回溯题常用 | ⬜ |\n| 4 | `reduce(func, iterable, initial)` 三个参数?initial 有何用? | func 接 (累积值, 当前元素);initial 是初始累积值,空可迭代时返回它(乘法传 1,加法传 0)。不传则用首元素当初始,空序列报错 | ⬜ |\n| 5 | `@lru_cache` 怎么提速?有什么适用条件? | 自动缓存「入参→结果」,相同入参直接命中。把递归 fib 从 O(2ⁿ) 降到 O(n)。**只适合纯函数**,且参数必须【可哈希】(list/dict 不行)。`cache_info()` 看命中 | ⬜ |\n| 6 | groupby 返回的 group 是什么?要注意什么? | group 是【迭代器】,用完即弃。要反复用得先 `list(g)` 物化 | ⬜ |\n| 7 | `partial(func, *args)` 干嘛? | 偏函数:固定 func 的部分参数,生成新函数。= 柯里化替代。如 `double = partial(mul, 2)` | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「groupby 为何要先排序、和 defaultdict 分组的取舍」?\n- [ ] 能说清「lru_cache 提速原理 + 适用条件」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": true,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch08 ｜ **M2 第二章**\n> **目标**:掌握 Python 函数式编程两大支柱——`itertools`(迭代器组合,对比 Java Stream 但更强大)和 `functools`(`reduce`、`lru_cache` 记忆化)。刷题和数据处理的神器。\n\n> 📐 **本教程的契约**:下面每一节(§9.1–§9.5)都**精确对应**作业里的一个任务。讲过的才考,考的必讲过。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "读完这章 + 完成作业,你将能够:\n- 用 `itertools.chain` 串联多个序列、`groupby` 分组(注意先排序)、`combinations` 组合\n- 用 `functools.reduce` 做累积运算(= Java `stream.reduce`)\n- 用 `functools.lru_cache` 一行实现记忆化(刷题神器,Java 要手写 Map 缓存)\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `flatten` | §9.1 | itertools.chain |\n| `group_by_sorted` | §9.2 | itertools.groupby(先排序) |\n| `pair_combinations` | §9.3 | itertools.combinations |\n| `multiply_all` | §9.4 | functools.reduce |\n| `cached_fib` | §9.5 | functools.lru_cache |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-60-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45-60 分钟)",
+      "secNum": null,
+      "body": "| 步 | 你要做 | 在哪做 |\n|----|--------|--------|\n| ① 预览猜 | 先猜 Python 怎么写 | 本页 ① |\n| ② 先动手 | 打开 `ch09_assignment.py`,先写 | assignment |\n| ③ 提取+反馈 | 写完 → `uv run pytest` 红绿 | test |\n| ④ 费曼 | 讲清\"groupby 为何要先排序\"\"lru_cache 怎么提速\" | 本页 ④ |\n| ⑤ 存闪卡 | 标 [`review.md`](./review.md) 复习日期 | review.md |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Java 把多个 Stream 拼起来要 `Stream.concat` 套娃。Python 一个函数叫?\n2. Java 按 key 分组用 `Collectors.groupingBy`,稳定正确。Python 的 `groupby` 有个必须注意的前置步骤,是什么?\n3. Java 求阶乘/连乘用 `stream.reduce(1, (a,b)->a*b)`。Python 对应什么?\n4. Java 写递归斐波那契会慢到不可用,要手写 `Map` 缓存或用 Guava。Python 一个装饰器搞定,叫?\n5. 列出 [a,b,c] 所有两两配对,Java 要双重循环,Python 一个函数?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-9.1",
+      "heading": "§9.1 itertools.chain:串联多个序列(对应:`flatten`)🟢",
+      "secNum": "9.1",
+      "body": "`chain` 把多个可迭代对象首尾相接,像一条流。比「列表相加 `+`」省内存(不创建中间列表)。\n\n```python\nfrom itertools import chain\n\nlist(chain([1,2], [3,4], [5]))     # [1,2,3,4,5]\nlist(chain(\"ab\", \"cd\"))            # ['a','b','c','d']\n\n# chain.from_iterable 接收一个「列表的列表」(不用打星号)\nlist(chain.from_iterable([[1,2],[3,4]]))   # [1,2,3,4]\n```\n\n> 🟡 **Java 对比**:= `Stream.concat(s1, s2)`(但只能拼两个,套娃很难看)。Python `chain` 一次拼任意多个。\n>\n> `flatten(*lists)` 用 `chain(*lists)` 把传入的多个列表打撒星号喂给 chain。\n\n> ✅ 做 `flatten` 题:`list(chain(*lists))`。\n\n---",
+      "exerciseFunctions": [
+        "flatten"
+      ]
+    },
+    {
+      "id": "sec-9.2",
+      "heading": "§9.2 itertools.groupby:分组(对应:`group_by_sorted`)🔴",
+      "secNum": "9.2",
+      "body": "⚠️ **本章最大的坑**:`groupby` 只合并**相邻**的相同 key,不是全局分组!\n\n```python\nfrom itertools import groupby\n\n# ❌ 不排序直接 groupby:[1,2,1] 会被切成三段\n[(k, list(g)) for k, g in groupby([1,2,1])]\n# [(1, [1]), (2, [2]), (1, [1])]   ← 两个 1 没合并!\n\n# ✅ 先排序,再 groupby\nordered = sorted([1,2,1,3,2])\n{k: list(g) for k, g in groupby(ordered)}\n# {1: [1, 1], 2: [2, 2], 3: [3]}   ← 正确合并\n```\n\n**为什么这样设计**?`groupby` 是**惰性流式**的——它边遍历边产出,不预先把全部数据读进内存。代价是只能看到「当前连续段」。要全局分组,你得先排序(让它变成连续的)。\n\n> 🤯 **Java 对比**:Java 的 `Collectors.groupingBy` 是「收完再分」,自动正确;Python 的 `groupby` 是「流式分组」,要手动排序。各有利弊:Python 版能处理流式/无限数据(配合 sorted 不行,但配合已有序列可以)。日常分组其实 Ch08 的 `defaultdict` 更稳,**`groupby` 主要用于数据已排序的场景**(如按时间已排好的日志)。\n\n### 标准用法(本节作业)\n\n```python\ndef group_by_sorted(items, key_func):\n    ordered = sorted(items, key=key_func)             # ① 先按 key 排序\n    return {k: list(g) for k, g in groupby(ordered, key=key_func)}  # ② 再分组\n```\n\n注意 `groupby(可迭代, key=函数)`:key 函数指定「按什么分组」(如 `lambda log: log[\"status\"]`)。`g` 是个迭代器,要 `list(g)` 物化(否则用完即弃)。\n\n> ✅ 做 `group_by_sorted` 题:见上。\n\n---",
+      "exerciseFunctions": [
+        "group_by_sorted"
+      ]
+    },
+    {
+      "id": "sec-9.3",
+      "heading": "§9.3 itertools.combinations:组合(对应:`pair_combinations`)🟢",
+      "secNum": "9.3",
+      "body": "```python\nfrom itertools import combinations\n\nlist(combinations([\"a\",\"b\",\"c\"], 2))   # [('a','b'),('a','c'),('b','c')]\nlist(combinations([1,2,3], 3))         # [(1,2,3)]   全选\n# combinations(序列, r):从 n 个里选 r 个的所有组合(不计顺序)\n```\n\n### 顺带认识兄弟函数(本章不出题,刷题常用)\n\n| 函数 | 含义 | 示例(items=[1,2,3]) |\n|------|------|---------------------|\n| `combinations(items, r)` | 组合(不计顺序) | `(1,2),(1,3),(2,3)` |\n| `permutations(items, r)` | 排列(计顺序) | `(1,2),(2,1),(1,3),...` |\n| `product(items, repeat=n)` | 笛卡尔积 | `repeat=2` → `(1,1),(1,2),...` |\n| `islice(iterable, n)` | 切片前 n 个(迭代器版) | 惰性取前 n |\n\n> 🟡 **Java 对比**:Java 没有内置组合/排列工具,要手写回溯或用 Guava。Python 标准库直接给。LeetCode 回溯题(Ch40)会大量用。\n\n> ✅ 做 `pair_combinations` 题:`list(combinations(items, 2))`。\n\n---",
+      "exerciseFunctions": [
+        "pair_combinations"
+      ]
+    },
+    {
+      "id": "sec-9.4",
+      "heading": "§9.4 functools.reduce:累积运算(对应:`multiply_all`)🟡",
+      "secNum": "9.4",
+      "body": "`reduce(函数, 可迭代, 初始值)` 反复把「函数」作用到累积值和下一个元素上,最终得到一个结果。\n\n```python\nfrom functools import reduce\nfrom operator import mul, add\n\nreduce(mul, [2,3,4], 1)    # ((1*2)*3)*4 = 24   连乘\nreduce(add, [1,2,3,4], 0)  # ((0+1)+2)+3+4 = 10  连加(等价于 sum)\n```\n\n### 三要素\n\n- **函数**:接受 `(累积值, 当前元素)`,返回新累积值。`mul` = `lambda a,b: a*b`。\n- **初始值**:reduce 的第三个参数。空可迭代时返回它(`reduce(mul, [], 1)` = 1)。不传则用第一个元素当初始值(空序列会报错)。\n- `operator` 模块提供 `mul`/`add`/`or_` 等运算符的函数形式,省得写 lambda。\n\n> 🟡 **Java 对比**:= `stream.reduce(identity, accumulator)`。`reduce(mul, nums, 1)` ≈ `nums.stream().reduce(1, (a,b)->a*b)`。\n>\n> 注意:Python 社区**不太推荐**滥用 reduce——简单的求和用 `sum()`,简单的连乘用 for 循环更可读。reduce 适合「真正需要累积」的场景。\n\n> ✅ 做 `multiply_all` 题:`reduce(mul, nums, 1)`(mul 从 operator 导入)。\n\n---",
+      "exerciseFunctions": [
+        "multiply_all"
+      ]
+    },
+    {
+      "id": "sec-9.5",
+      "heading": "§9.5 functools.lru_cache:记忆化(对应:`cached_fib`)🔴",
+      "secNum": "9.5",
+      "body": "**一行装饰器,自动缓存函数结果**——相同入参直接返回缓存,不重算。递归优化的神器。\n\n```python\nfrom functools import lru_cache\n\n@lru_cache(maxsize=None)      # None = 无限缓存;也可填数字(如 128)\ndef fib(n):\n    if n < 2:\n        return n\n    return fib(n-1) + fib(n-2)\n\nfib(100)    # 秒算!没缓存的话,这个递归复杂度是 O(2^n),100 根本算不完\n```\n\n### 为什么这么强?\n\n递归 fib 没有 lru_cache 时,`fib(5)` 会重复算 `fib(3)`、`fib(2)` 很多次(指数爆炸)。加了 lru_cache,每个 n 只算一次,后续命中缓存 → 复杂度降到 O(n)。\n\n### 调试工具:`cache_info()`\n\n```python\nfib(50)\nfib.cache_info()\n# CacheInfo(hits=49, misses=51, maxsize=None, currsize=51)\n#                ↑ 命中次数   ↑ 未命中(实际计算)次数\n```\n\n### 适用条件(重要!)\n\nlru_cache 只适合**纯函数**(相同输入永远相同输出,无副作用):\n- ✅ 数学计算(fib、阶乘)、数据查询缓存\n- ❌ 依赖外部状态(时间、随机数、数据库)的函数——缓存会失效或出错\n- ❌ 参数不可哈希(list/dict 当参数)——lru_cache 用参数当字典键,不可哈希会报错\n\n> 🤯 **Java 对比**:Java 要手写 `Map<Input,Output>` 缓存逻辑,或用 Guava `CacheBuilder`。Python 一个 `@lru_cache` 装饰器搞定。这就是装饰器的威力(Ch04 学过)。\n\n> ✅ 做 `cached_fib` 题:`def` 上一行加 `@lru_cache(maxsize=None)`,写普通递归。\n\n---",
+      "exerciseFunctions": [
+        "cached_fib"
+      ]
+    },
+    {
+      "id": "sec-9.6",
+      "heading": "§9.6 functools.partial:偏函数(了解,本章不考)",
+      "secNum": "9.6",
+      "body": "`partial(函数, *固定参数)` 把一个函数的某些参数「固定」,生成新函数(= 柯里化的替代)。\n\n```python\nfrom functools import partial\nfrom operator import mul\n\ndouble = partial(mul, 2)     # 固定第一个参数为 2\ndouble(5)                    # 10\ndouble(10)                   # 20\n\n# 等价于 Ch04 的闭包 make_multiplier(2),但 partial 更简洁\n```\n\n知道有这个工具即可。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-9.7",
+      "heading": "§9.7 Java 老手常踩的坑 ⚠️",
+      "secNum": "9.7",
+      "body": "1. **`groupby` 忘排序**:得到破碎的分组。记住:groupby = 排序 + 分组,缺一不可。日常分组更推荐 Ch08 的 `defaultdict`。\n2. **`groupby` 的 `g` 是迭代器**:`list(g)` 物化后才能反复用,否则用完即弃。\n3. **`reduce` 漏写初始值**:空序列会报错(或行为不符预期)。需要「空输入有合理默认」时,传第三个参数(如乘法传 1、加法传 0)。\n4. **`lru_cache` 用在非纯函数**:依赖时间/随机/外部状态的函数加了缓存会出错。\n5. **`lru_cache` 参数不可哈希**:传 list/dict 当参数会报错。可哈希才行(int/str/tuple/冻结集合)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "打开 **`ch09_assignment.py`**,5 个任务。\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `flatten` | itertools.chain | 🟢 |\n| `group_by_sorted` | itertools.groupby(先排序) | 🟡 |\n| `pair_combinations` | itertools.combinations | 🟢 |\n| `multiply_all` | functools.reduce | 🟡 |\n| `cached_fib` | functools.lru_cache | 🟡 |\n\n```bash\nuv run pytest 02_stdlib/ch09/test_ch09_assignment.py -v\n```\n全绿 = 掌握 Ch09。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清「groupby 为何必须先排序?它和 defaultdict 分组有何区别」(§9.2)\n- [ ] 能解释 lru_cache 为何能把递归 fib 从 O(2ⁿ) 降到 O(n),以及它的适用条件(§9.5)\n- [ ] 知道 reduce 的初始值参数有什么用(§9.4)\n- [ ] 5 个作业全绿\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「groupby 为什么只合并相邻的 key?要正确全局分组得怎么做?」— 重读 §9.2\n2. 「lru_cache 是怎么让递归斐波那契变快的?什么情况下不能用?」— 重读 §9.5\n3. 「itertools 和 Java Stream 相比,各自的设计哲学是什么?」— 重读 §9.1/§9.3",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch09 掌握后,进 **Ch10 · 正则表达式**——从 nginx 日志里一行提取 IP/method/path/status,对比 Java `Pattern`/`Matcher`。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "flatten",
+      "testClass": "TestFlatten",
+      "skeleton": "def flatten(*lists):\n    \"\"\"\n    【chain · §9.1】把传入的多个列表【串联】成一条流,返回扁平化的 list。\n\n    示例:\n        flatten([1,2], [3,4])       -> [1,2,3,4]\n        flatten([1], [2,3], [4])    -> [1,2,3,4]\n\n    思路:itertools.chain(*lists) 把多个可迭代对象首尾相接。包一层 list() 物化。\n    \"\"\"\n    # TODO: list(chain(*lists))\n    ..."
+    },
+    {
+      "name": "group_by_sorted",
+      "testClass": "TestGroupBySorted",
+      "skeleton": "def group_by_sorted(items, key_func):\n    \"\"\"\n    【groupby · §9.2】按 key_func 分组,返回 {key: [items]}。\n\n    示例:\n        group_by_sorted([1,2,1,3,2], lambda x: x)  -> {1:[1,1], 2:[2,2], 3:[3]}\n\n    ⚠️ 关键陷阱:groupby 只合并【相邻】的相同 key。所以【必须先用 sorted 排序】,\n       否则 [1,2,1] 会被分成 (1→[1])、(2→[2])、(1→[1]) 三组而不是 {1:[1,1]}。\n\n    思路:\n        ordered = sorted(items, key=key_func)\n        return {k: list(g) for k, g in groupby(ordered, key=key_func)}\n    \"\"\"\n    # TODO: 先 sorted,再 groupby 字典推导\n    ..."
+    },
+    {
+      "name": "pair_combinations",
+      "testClass": "TestPairCombinations",
+      "skeleton": "def pair_combinations(items):\n    \"\"\"\n    【combinations · §9.3】返回所有【两两组合】,list of tuple。\n\n    示例:\n        pair_combinations([\"a\",\"b\",\"c\"])  -> [(\"a\",\"b\"),(\"a\",\"c\"),(\"b\",\"c\")]\n        pair_combinations([1,2,3,4])      -> 长度 6(= C(4,2))\n\n    思路:itertools.combinations(items, 2) 生成所有 2 元子集。包 list()。\n    \"\"\"\n    # TODO: list(combinations(items, 2))\n    ..."
+    },
+    {
+      "name": "multiply_all",
+      "testClass": "TestMultiplyAll",
+      "skeleton": "def multiply_all(nums):\n    \"\"\"\n    【reduce · §9.4】连乘所有数。空列表返回 1(乘法单位元)。\n\n    示例:\n        multiply_all([2,3,4])  -> 24\n        multiply_all([])       -> 1\n\n    思路:functools.reduce(函数, 可迭代, 初始值) 反复把函数作用到累积值上:\n        reduce(mul, [2,3,4], 1) = ((1*2)*3)*4 = 24\n        mul 从 operator 导入(就是 a*b)。第三个参数 1 是初始值(空列表时返回它)。\n    \"\"\"\n    # TODO: reduce(mul, nums, 1)\n    ..."
+    },
+    {
+      "name": "cached_fib",
+      "testClass": "TestCachedFib",
+      "skeleton": "def cached_fib(n):\n    \"\"\"\n    【lru_cache · §9.5】斐波那契,用 @lru_cache 记忆化,大 n 也秒算。\n    fib(0)=0, fib(1)=1, fib(n)=fib(n-1)+fib(n-2)。\n\n    示例:\n        cached_fib(10)  -> 55\n        cached_fib(50)  -> 12586269025   (没缓存会慢到不可用)\n\n    思路:① 在 def 上一行加 @lru_cache(maxsize=None);\n         ② 写普通递归:if n < 2: return n; return cached_fib(n-1) + cached_fib(n-2)\n         装饰器会自动缓存每次调用的结果,重复调用直接命中。\n    \"\"\"\n    # TODO: 加 @lru_cache 装饰器 + 递归实现\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh09 作业:itertools + functools —— 函数式利器。\n\n5 个任务。在每处 TODO 写实现,然后:\n\n    uv run pytest 02_stdlib/ch09/test_ch09_assignment.py -v\n\n全绿 = 你掌握了 Ch09。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom functools import lru_cache, reduce\nfrom itertools import chain, combinations, groupby\nfrom operator import mul\n\n\n# ========== §9.1 itertools.chain ==========\n\n\n# ========== §9.2 itertools.groupby(必须先排序!)==========\n\n\n# ========== §9.3 itertools.combinations ==========\n\n\n# ========== §9.4 functools.reduce ==========\n\n\n# ========== §9.5 functools.lru_cache ==========\n\n\n# TODO: 给下面这个函数加上 @lru_cache(maxsize=None) 装饰器(开启无限缓存)\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(\"flatten:\", flatten([1, 2], [3, 4]))\n    print(\"group:\", group_by_sorted([1, 2, 1, 3, 2], lambda x: x))\n    print(\"pairs:\", pair_combinations([\"a\", \"b\", \"c\"]))\n    print(\"product:\", multiply_all([2, 3, 4]))\n    print(\"fib(50):\", cached_fib(50))\n    print(\"cache_info:\", cached_fib.cache_info())"
+}

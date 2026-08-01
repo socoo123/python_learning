@@ -3,7 +3,9 @@
  * 运行:`bun run build:content`(dev/build 时 vite 插件自动调用)。
  * 只读源文件,绝不修改。源仓库不在(独立 clone web/)时静默跳过。
  */
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync, statSync, rmSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -11,7 +13,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(WEB_DIR, "..");
 const OUT_DIR = path.join(WEB_DIR, "src", "content");
-const OUT_FILE = path.join(OUT_DIR, "curriculum.json");
+const CHAPTERS_DIR = path.join(OUT_DIR, "chapters");
+const INDEX_FILE = path.join(OUT_DIR, "index.json");
+const SHARED_FILE = path.join(OUT_DIR, "shared.json");
+const LEGACY_MONOLITH = path.join(OUT_DIR, "curriculum.json");
 
 export interface FuncDef {
   name: string;
@@ -25,11 +30,13 @@ export interface Section {
   body: string; // 该节 markdown 正文(不含标题行)
   exerciseFunctions: string[]; // 该节对应的函数名
 }
-export interface Chapter {
+export interface ChapterSummary {
   id: string;
   num: string;
   title: string;
   runMode: "pyodide" | "local";
+}
+export interface Chapter extends ChapterSummary {
   tutorialMd: string; // 原始完整教程(layout A 回退用)
   assignment: string; // 完整作业文件(layout A / 本地用)
   testName: string;
@@ -47,11 +54,14 @@ export interface Module {
   subtitle: string;
   dir: string;
   available: boolean;
-  chapters: Chapter[];
+  chapters: ChapterSummary[];
 }
-export interface Curriculum {
+export interface CurriculumIndex {
   modules: Module[];
-  shared: { conftest: string; mocks: Record<string, string> };
+}
+export interface SharedContent {
+  conftest: string;
+  mocks: Record<string, string>;
 }
 
 const MODULE_DEFS: Omit<Module, "chapters">[] = [
@@ -212,68 +222,92 @@ function parseSections(tutorialMd: string, mapping: Map<string, string[]>): Sect
   return sections;
 }
 
-function buildModule(def: Omit<Module, "chapters">): Module {
+function buildChapters(def: Omit<Module, "chapters">): Chapter[] {
   const moduleDir = path.join(REPO_ROOT, def.dir);
   const chapters: Chapter[] = [];
-  if (existsSync(moduleDir) && statSync(moduleDir).isDirectory()) {
-    const dirs = readdirSync(moduleDir).filter((d) => /^ch\d+$/.test(d)).sort();
-    for (const d of dirs) {
-      const chDir = path.join(moduleDir, d);
-      const num = d.replace("ch", "");
-      const testName = `${d}_assignment`;
-      const tutorial = safeRead(path.join(chDir, "tutorial.md"));
-      const assignment = safeRead(path.join(chDir, `${testName}.py`));
-      const testSource = safeRead(path.join(chDir, `test_${testName}.py`));
-      const reviewMd = safeRead(path.join(chDir, "review.md"));
-      if (!tutorial && !assignment) continue;
+  if (!existsSync(moduleDir) || !statSync(moduleDir).isDirectory()) return chapters;
+  const dirs = readdirSync(moduleDir).filter((d) => /^ch\d+$/.test(d)).sort();
+  for (const d of dirs) {
+    const chDir = path.join(moduleDir, d);
+    const num = d.replace("ch", "");
+    const testName = `${d}_assignment`;
+    const tutorial = safeRead(path.join(chDir, "tutorial.md"));
+    const assignment = safeRead(path.join(chDir, `${testName}.py`));
+    const testSource = safeRead(path.join(chDir, `test_${testName}.py`));
+    const reviewMd = safeRead(path.join(chDir, "review.md"));
+    if (!tutorial && !assignment) continue;
 
-      let runMode = detectRunMode([assignment, testSource]);
-      if (FORCE_LOCAL_DIRS.has(def.dir)) runMode = "local";
-      const { preamble, functions } = parseAssignment(assignment);
-      const mapping = parseMappingTable(tutorial);
-      const sections = parseSections(tutorial, mapping);
-      const funcNames = new Set(functions.map((f) => f.name));
-      const hasExercises = sections.some((s) => s.exerciseFunctions.some((f) => funcNames.has(f)));
-      const interleaved = hasExercises && functions.length > 0 && runMode === "pyodide";
+    let runMode = detectRunMode([assignment, testSource]);
+    if (FORCE_LOCAL_DIRS.has(def.dir)) runMode = "local";
+    const { preamble, functions } = parseAssignment(assignment);
+    const mapping = parseMappingTable(tutorial);
+    const sections = parseSections(tutorial, mapping);
+    const funcNames = new Set(functions.map((f) => f.name));
+    const hasExercises = sections.some((s) => s.exerciseFunctions.some((f) => funcNames.has(f)));
+    const interleaved = hasExercises && functions.length > 0 && runMode === "pyodide";
 
-      chapters.push({
-        id: d,
-        num,
-        title: extractTitle(tutorial, `第 ${num} 课`),
-        runMode,
-        tutorialMd: tutorial,
-        assignment,
-        testName,
-        testSource,
-        reviewMd,
-        interleaved,
-        sections,
-        functions,
-        preamble,
-      });
-    }
+    chapters.push({
+      id: d,
+      num,
+      title: extractTitle(tutorial, `第 ${num} 课`),
+      runMode,
+      tutorialMd: tutorial,
+      assignment,
+      testName,
+      testSource,
+      reviewMd,
+      interleaved,
+      sections,
+      functions,
+      preamble,
+    });
   }
-  return { ...def, chapters };
+  return chapters;
 }
 
-export function buildCurriculum(): Curriculum | null {
+function toSummary(ch: Chapter): ChapterSummary {
+  return { id: ch.id, num: ch.num, title: ch.title, runMode: ch.runMode };
+}
+
+export function buildCurriculum(): CurriculumIndex | null {
   if (!existsSync(path.join(REPO_ROOT, "01_python_core"))) {
     console.log("[content] 源仓库不存在(独立运行 web/),跳过烘焙,使用已提交内容。");
     return null;
   }
-  const modules = MODULE_DEFS.map(buildModule);
+
+  mkdirSync(OUT_DIR, { recursive: true });
+  // 清空旧章节文件,避免删章后残留
+  if (existsSync(CHAPTERS_DIR)) rmSync(CHAPTERS_DIR, { recursive: true, force: true });
+  mkdirSync(CHAPTERS_DIR, { recursive: true });
+  if (existsSync(LEGACY_MONOLITH)) rmSync(LEGACY_MONOLITH, { force: true });
+
+  const modules: Module[] = [];
+  let inter = 0;
+  let total = 0;
+
+  for (const def of MODULE_DEFS) {
+    const fullChapters = buildChapters(def);
+    for (const ch of fullChapters) {
+      writeFileSync(path.join(CHAPTERS_DIR, `${ch.id}.json`), JSON.stringify(ch, null, 2), "utf-8");
+      total++;
+      if (ch.interleaved) inter++;
+    }
+    modules.push({ ...def, chapters: fullChapters.map(toSummary) });
+  }
+
   const mockDir = path.join(REPO_ROOT, "assets", "mock_data");
   const mocks: Record<string, string> = {};
   if (existsSync(mockDir)) for (const f of readdirSync(mockDir).sort()) mocks[f] = readText(path.join(mockDir, f));
-  const conftest = safeRead(path.join(REPO_ROOT, "conftest.py"));
-  const curriculum: Curriculum = { modules, shared: { conftest, mocks } };
-  mkdirSync(OUT_DIR, { recursive: true });
-  writeFileSync(OUT_FILE, JSON.stringify(curriculum, null, 2), "utf-8");
+  const shared: SharedContent = { conftest: safeRead(path.join(REPO_ROOT, "conftest.py")), mocks };
 
-  let inter = 0, total = 0;
-  for (const m of modules) for (const c of m.chapters) { total++; if (c.interleaved) inter++; }
-  console.log(`[content] 烘焙完成:${total} 章,其中 ${inter} 章交错式 → src/content/curriculum.json`);
-  return curriculum;
+  const index: CurriculumIndex = { modules };
+  writeFileSync(INDEX_FILE, JSON.stringify(index, null, 2), "utf-8");
+  writeFileSync(SHARED_FILE, JSON.stringify(shared, null, 2), "utf-8");
+
+  console.log(
+    `[content] 烘焙完成:${total} 章,其中 ${inter} 章交错式 → src/content/index.json + shared.json + chapters/*.json`,
+  );
+  return index;
 }
 
 if ((import.meta as any).main) buildCurriculum();

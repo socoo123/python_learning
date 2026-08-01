@@ -1,0 +1,134 @@
+{
+  "id": "ch15",
+  "num": "15",
+  "title": "路由参数:路径参数 / 查询参数 / 分页",
+  "runMode": "local",
+  "tutorialMd": "# Ch15 · 路由参数:路径参数 / 查询参数 / 分页\n\n> **预计**:0.5 天 ｜ **前置**:Ch14\n> **目标**:搞清 FastAPI 的「参数三来源」——**路径参数 / 查询参数 / 请求体**——FastAPI 怎么靠类型注解自动区分。给商品 API 加筛选和分页。\n\n> 📐 **本教程的契约**:§15.1–§15.4 对应作业。\n\n---\n\n## 🗺️ 本章地图\n\n**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `list_products`(筛选) | §15.2 | 查询参数(可选 + 默认) |\n| `list_products`(分页) | §15.4 | Query 校验 + 切片分页 |\n| `get_product` | §15.1 | 路径参数 + 422 |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 45 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. Spring `@PathVariable(\"id\")` 和 `@RequestParam(\"category\")` 区分路径/查询参数。FastAPI 怎么区分(不写注解)?\n2. 查询参数「可选,不传就不过滤」怎么写类型?\n3. 分页参数 page 不能 ≤ 0、size 不能超过 100,怎么用一行注解约束?\n4. `/products/abc`(id 应是 int)FastAPI 返回什么?\n\n---\n\n## §15.1 路径参数 vs 查询参数:FastAPI 怎么区分 🔴\n\nFastAPI 靠**两个规则**自动判断参数来源(不用 `@PathVariable`/`@RequestParam`):\n\n| 参数特征 | 来源 | 示例 |\n|----------|------|------|\n| 名字在路径 `{xxx}` 里 | **路径参数** | `/products/{product_id}` + `product_id: int` |\n| 简单类型(int/str/float)且名字不在路径里 | **查询参数** | `category: str` → `?category=book` |\n| Pydantic 模型类型 | **请求体** | `p: ProductCreate`(Ch14) |\n\n```python\n@app.get(\"/products/{product_id}\")        # 路径里有 {product_id}\ndef get_product(product_id: int):          # product_id → 路径参数(从 URL 提取)\n    ...\n\n@app.get(\"/products\")\ndef list_products(category: str = \"all\"):  # category 不在路径里 → 查询参数 ?category=xxx\n    ...\n```\n\n> 🤯 **Java 老手震惊点**:Spring 要写 `@PathVariable` / `@RequestParam` / `@RequestBody` 显式标注。FastAPI 一个类型注解 + 是否在路径里,自动判断。少写一半样板。\n\n### 路径参数的类型校验\n\n```python\n@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):    # int 注解:URL \"1\"→1;非数字如 \"abc\"→422\n    ...\n```\n`/products/abc` 会返回 **422**(路径参数类型校验失败),不是 404。\n\n> ✅ 做 `get_product` 题:遍历找 id 匹配,找不到 `HTTPException(404)`。\n\n---\n\n## §15.2 查询参数:可选 + 默认值(对应:`list_products` 筛选)🟡\n\n```python\n@app.get(\"/products\")\ndef list_products(\n    category: str | None = None,       # 可选:不传是 None\n    min_price: float | None = None,    # 可选\n):\n    result = PRODUCTS\n    if category is not None:            # 只过滤「传了的」参数\n        result = [p for p in result if p.category == category]\n    if min_price is not None:\n        result = [p for p in result if p.price >= min_price]\n    return result\n```\n\n**关键模式**:`str | None = None` 表示「可选查询参数,不传时是 None」。函数内用 `if xxx is not None` 判断要不要过滤——这样「不传 = 不过滤」。\n\n> 🟡 **Java 对比**:= `@RequestParam(required = false) String category`。Python 用 `str | None = None` 表达「可空 + 默认 None」。\n\n调用:`GET /products?category=图书&min_price=50` → category=\"图书\", min_price=50.0。\n\n---\n\n## §15.3 Query 校验:约束查询参数(对应:分页参数)\n\n`Query(默认值, 约束)` 给查询参数加约束(类似 Ch14 的 Field,但用于简单类型参数):\n\n```python\nfrom fastapi import Query\n\n@app.get(\"/products\")\ndef list_products(\n    page: int = Query(1, ge=1),             # 默认1,必须 >=1\n    size: int = Query(10, ge=1, le=100),    # 默认10,范围 1~100\n):\n    ...\n```\n\n| 约束 | 含义 |\n|------|------|\n| `ge=1` | >= 1 |\n| `le=100` | <= 100 |\n| `gt=0` | > 0 |\n| `lt=1000` | < 1000 |\n\n`page=0` 或 `size=200` 会被拒绝 → **422**。\n\n> ✅ 分页参数用 `Query(默认, ge=, le=)` 约束。\n\n---\n\n## §15.4 分页:切片(对应:`list_products` 分页)🟡\n\n```python\nstart = (page - 1) * size       # 第 page 页 → 跳过 (page-1)*size 个\nreturn result[start:start + size]\n```\n\npage 从 1 开始(对前端友好),转换成 0-based 切片:\n- page=1, size=2 → `[0:2]`(第 1、2 个)\n- page=2, size=2 → `[2:4]`(第 3、4 个)\n- 超出范围 → `[]`(空列表,不是错误)\n\n> 🟡 这是标准分页公式,记住:`start = (page-1) * size`。Ch19 接数据库后会换成 SQL 的 `offset/limit`,但公式一样。\n\n> ✅ 做 `list_products` 题:筛选(两个可选参数)+ 分页切片组合。\n\n---\n\n## §15.5 速查:参数三来源判定(背下来)\n\n```\ndef endpoint(\n    path_param: int,            # 名字在路径 {path_param} 里 → 路径参数\n    query_required: str,        # 简单类型,不在路径里,无默认 → 必填查询参数\n    query_optional: int = 10,   # 简单类型,有默认 → 可选查询参数\n    body: ProductCreate,        # Pydantic 模型 → 请求体\n):\n```\n\n---\n\n## §15.6 Java 老手常踩的坑 ⚠️\n\n1. **路径参数和函数参数同名才匹配**:`/products/{product_id}` 要参数叫 `product_id`。名字不一致取不到。\n2. **可选查询参数用 `X | None = None`**:不是 `Optional[X]` 也行,但 `= None` 必须有(否则变必填)。\n3. **分页 page 从 1 开始**:别用 0-based page,前端约定俗成是 1-based。切片时 `(page-1)*size`。\n4. **超出范围的页返 `[]` 不是 404**:分页越界是空列表,正常业务结果。\n5. **路径参数类型错是 422 不是 404**:`/products/abc` 返 422(类型校验),不是 404。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| 筛选(category/min_price) | 可选查询参数 | 🟡 |\n| 分页(page/size) | Query 校验 + 切片 | 🟡 |\n| `get_product` | 路径参数 + 422 | 🟢 |\n\n```bash\nuv run pytest 03_web_framework/ch15/test_ch15_assignment.py -v\n```\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清 FastAPI 如何靠「路径里有没有 + 类型」自动区分路径参数/查询参数/请求体\n- [ ] 会写可选查询参数(`X | None = None`)并用 `is not None` 判断过滤\n- [ ] 会用 `Query(默认, ge=, le=)` 约束分页参数,知道越界返 422\n- [ ] 3 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「FastAPI 不写 @PathVariable/@RequestParam,怎么知道哪个参数从哪来?」— 重读 §15.1/§15.5\n2. 「可选查询参数怎么写?为什么用 `is not None` 判断而不是 `if category:`?」— 重读 §15.2\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步\n\nCh15 掌握后,进 **Ch16 · 依赖注入**——FastAPI 最强大的设计之一(`Depends`,对比 Spring `@Autowired`)。把分页参数、当前用户、DB session 等公共逻辑抽成可复用的依赖。\n",
+  "assignment": "\"\"\"\nCh15 作业:路由参数 —— 路径参数 / 查询参数 / 分页 / Query 校验。\n\n给商品 API 加【筛选】和【分页】:\n    GET /products?category=图书&min_price=50&page=1&size=10\n    GET /products/{id}\n\n    uv run pytest 03_web_framework/ch15/test_ch15_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import FastAPI, HTTPException, Query\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"商品查询 API\")\n\n\nclass Product(BaseModel):\n    id: int\n    name: str\n    category: str\n    price: float\n    stock: int = 0\n\n\nPRODUCTS: list[Product] = [\n    Product(id=1, name=\"机械键盘\", category=\"电脑外设\", price=599.0, stock=120),\n    Product(id=2, name=\"无线鼠标\", category=\"电脑外设\", price=159.0, stock=300),\n    Product(id=3, name=\"设计模式\", category=\"图书\", price=75.5, stock=200),\n    Product(id=4, name=\"Python编程\", category=\"图书\", price=89.0, stock=500),\n    Product(id=5, name=\"降噪耳机\", category=\"影音设备\", price=1299.0, stock=80),\n]\n\n\n@app.get(\"/products\")\ndef list_products(\n    category: str | None = None,\n    min_price: float | None = None,\n    page: int = Query(1, ge=1),\n    size: int = Query(10, ge=1, le=100),\n):\n    \"\"\"\n    【查询参数 + 分页 · §15.2/§15.3/§15.4】支持按 category/min_price 筛选 + page/size 分页。\n    参数签名已给(category/min_price 可选,page/size 用 Query 校验)。你实现筛选+分页逻辑。\n\n    思路:\n        result = PRODUCTS\n        if category is not None:     # None 表示没传,不过滤\n            result = [p for p in result if p.category == category]\n        if min_price is not None:\n            result = [p for p in result if p.price >= min_price]\n        start = (page - 1) * size     # 分页切片起点(第几页 → 跳过多少个)\n        return result[start:start + size]\n    \"\"\"\n    # TODO: 筛选(category/min_price,只过滤「非 None 的」)+ 分页切片\n    ...\n\n\n@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【路径参数 · §15.1】按 id 查单个商品;不存在 404。\n    product_id 是 int 注解 → URL 里的 \"1\" 自动转 int,非数字(如 /products/abc)返 422。\n\n    思路:遍历 PRODUCTS 找 id 匹配的返回;找不到 raise HTTPException(404)。\n    \"\"\"\n    # TODO: 查找;不存在 HTTPException(404)\n    ...\n",
+  "testName": "ch15_assignment",
+  "testSource": "\"\"\"\nCh15 作业测试。运行: uv run pytest 03_web_framework/ch15/test_ch15_assignment.py -v\n\"\"\"\nfrom fastapi.testclient import TestClient\n\nfrom ch15_assignment import app\n\nclient = TestClient(app)\n\n\n# ---------- list_products:筛选 ----------\nclass TestFilter:\n    def test_all_no_filter(self):\n        assert len(client.get(\"/products\").json()) == 5\n\n    def test_filter_by_category(self):\n        data = client.get(\"/products\", params={\"category\": \"图书\"}).json()\n        assert len(data) == 2\n        assert all(p[\"category\"] == \"图书\" for p in data)\n\n    def test_filter_min_price(self):\n        data = client.get(\"/products\", params={\"min_price\": 500}).json()\n        assert len(data) == 2          # 键盘599、耳机1299\n        names = {p[\"name\"] for p in data}\n        assert names == {\"机械键盘\", \"降噪耳机\"}\n\n    def test_filter_combined(self):\n        data = client.get(\"/products\", params={\"category\": \"电脑外设\", \"min_price\": 200}).json()\n        assert len(data) == 1          # 只有键盘599 >=200(鼠标159被滤掉)\n        assert data[0][\"name\"] == \"机械键盘\"\n\n    def test_filter_no_match(self):\n        data = client.get(\"/products\", params={\"category\": \"不存在\"}).json()\n        assert data == []\n\n    def test_min_price_boundary_inclusive(self):\n        # >= 599 应包含键盘599\n        data = client.get(\"/products\", params={\"min_price\": 599}).json()\n        names = {p[\"name\"] for p in data}\n        assert \"机械键盘\" in names\n\n\n# ---------- list_products:分页 ----------\nclass TestPagination:\n    def test_default_returns_all(self):\n        # 默认 size=10,共 5 个 → 全返回\n        assert len(client.get(\"/products\").json()) == 5\n\n    def test_page1_size2(self):\n        data = client.get(\"/products\", params={\"page\": 1, \"size\": 2}).json()\n        assert len(data) == 2\n        assert data[0][\"id\"] == 1\n\n    def test_page2_size2(self):\n        data = client.get(\"/products\", params={\"page\": 2, \"size\": 2}).json()\n        assert len(data) == 2\n        assert data[0][\"id\"] == 3\n\n    def test_last_page_partial(self):\n        # 第 3 页(每页2):只剩 id=5 一个\n        data = client.get(\"/products\", params={\"page\": 3, \"size\": 2}).json()\n        assert len(data) == 1\n\n    def test_beyond_last_page_empty(self):\n        data = client.get(\"/products\", params={\"page\": 99, \"size\": 2}).json()\n        assert data == []\n\n    def test_page_zero_rejected(self):\n        # page 必须 >=1(ge=1)\n        assert client.get(\"/products\", params={\"page\": 0}).status_code == 422\n\n    def test_size_too_large_rejected(self):\n        # size 上限 100(le=100)\n        assert client.get(\"/products\", params={\"size\": 200}).status_code == 422\n\n\n# ---------- get_product:路径参数 ----------\nclass TestGetProduct:\n    def test_existing(self):\n        assert client.get(\"/products/1\").json()[\"name\"] == \"机械键盘\"\n\n    def test_missing_404(self):\n        assert client.get(\"/products/999\").status_code == 404\n\n    def test_non_int_id_rejected(self):\n        # /products/abc → 路径参数类型校验失败 422\n        assert client.get(\"/products/abc\").status_code == 422\n",
+  "reviewMd": "# Ch15 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | FastAPI 怎么区分路径参数/查询参数/请求体(不写注解)? | ① 名字在路径 `{x}` 里 → 路径参数 ② 简单类型且不在路径 → 查询参数 ③ Pydantic 模型 → 请求体。靠类型注解 + 路径自动判断 | ⬜ |\n| 2 | 可选查询参数怎么写?为什么判 `is not None` 而非 `if x:`? | `category: str \\| None = None`。用 `if category is not None` 判断是否过滤——因为 `if category:` 会把空串/0 也当\"没传\"(Ch01 truthiness 坑) | ⬜ |\n| 3 | `Query(1, ge=1)` 和 `Query(10, ge=1, le=100)`? | 给查询参数设默认值 + 约束。ge=大于等于,le=小于等于,gt/lt=大于/小于。违反约束返 422。用于分页 page/size | ⬜ |\n| 4 | 分页切片公式?page 从 0 还是 1 开始? | `start = (page-1) * size`,返回 `result[start:start+size]`。page 从 **1** 开始(前端约定),切片转 0-based | ⬜ |\n| 5 | `/products/abc`(id 应是 int)返回什么?404 还是? | **422**(路径参数类型校验失败),不是 404。404 是「类型对但资源不存在」 | ⬜ |\n| 6 | 分页超出最后一页返回什么? | 返回空列表 `[]`,**不是 404 也不是错误**。越界是正常业务结果 | ⬜ |\n| 7 | FastAPI 参数三来源各对应 Java Spring 什么? | 路径参数=@PathVariable;查询参数=@RequestParam;请求体=@RequestBody。FastAPI 靠类型自动判断,Spring 要显式注解 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「参数三来源的判定规则」?\n- [ ] 能说清「可选查询参数写法 + 为什么 is not None」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch14\n> **目标**:搞清 FastAPI 的「参数三来源」——**路径参数 / 查询参数 / 请求体**——FastAPI 怎么靠类型注解自动区分。给商品 API 加筛选和分页。\n\n> 📐 **本教程的契约**:§15.1–§15.4 对应作业。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "**作业 ↔ 教程对应表**:\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `list_products`(筛选) | §15.2 | 查询参数(可选 + 默认) |\n| `list_products`(分页) | §15.4 | Query 校验 + 切片分页 |\n| `get_product` | §15.1 | 路径参数 + 422 |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-45-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 45 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. Spring `@PathVariable(\"id\")` 和 `@RequestParam(\"category\")` 区分路径/查询参数。FastAPI 怎么区分(不写注解)?\n2. 查询参数「可选,不传就不过滤」怎么写类型?\n3. 分页参数 page 不能 ≤ 0、size 不能超过 100,怎么用一行注解约束?\n4. `/products/abc`(id 应是 int)FastAPI 返回什么?\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-15.1",
+      "heading": "§15.1 路径参数 vs 查询参数:FastAPI 怎么区分 🔴",
+      "secNum": "15.1",
+      "body": "FastAPI 靠**两个规则**自动判断参数来源(不用 `@PathVariable`/`@RequestParam`):\n\n| 参数特征 | 来源 | 示例 |\n|----------|------|------|\n| 名字在路径 `{xxx}` 里 | **路径参数** | `/products/{product_id}` + `product_id: int` |\n| 简单类型(int/str/float)且名字不在路径里 | **查询参数** | `category: str` → `?category=book` |\n| Pydantic 模型类型 | **请求体** | `p: ProductCreate`(Ch14) |\n\n```python\n@app.get(\"/products/{product_id}\")        # 路径里有 {product_id}\ndef get_product(product_id: int):          # product_id → 路径参数(从 URL 提取)\n    ...\n\n@app.get(\"/products\")\ndef list_products(category: str = \"all\"):  # category 不在路径里 → 查询参数 ?category=xxx\n    ...\n```\n\n> 🤯 **Java 老手震惊点**:Spring 要写 `@PathVariable` / `@RequestParam` / `@RequestBody` 显式标注。FastAPI 一个类型注解 + 是否在路径里,自动判断。少写一半样板。\n\n### 路径参数的类型校验\n\n```python\n@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):    # int 注解:URL \"1\"→1;非数字如 \"abc\"→422\n    ...\n```\n`/products/abc` 会返回 **422**(路径参数类型校验失败),不是 404。\n\n> ✅ 做 `get_product` 题:遍历找 id 匹配,找不到 `HTTPException(404)`。\n\n---",
+      "exerciseFunctions": [
+        "get_product"
+      ]
+    },
+    {
+      "id": "sec-15.2",
+      "heading": "§15.2 查询参数:可选 + 默认值(对应:`list_products` 筛选)🟡",
+      "secNum": "15.2",
+      "body": "```python\n@app.get(\"/products\")\ndef list_products(\n    category: str | None = None,       # 可选:不传是 None\n    min_price: float | None = None,    # 可选\n):\n    result = PRODUCTS\n    if category is not None:            # 只过滤「传了的」参数\n        result = [p for p in result if p.category == category]\n    if min_price is not None:\n        result = [p for p in result if p.price >= min_price]\n    return result\n```\n\n**关键模式**:`str | None = None` 表示「可选查询参数,不传时是 None」。函数内用 `if xxx is not None` 判断要不要过滤——这样「不传 = 不过滤」。\n\n> 🟡 **Java 对比**:= `@RequestParam(required = false) String category`。Python 用 `str | None = None` 表达「可空 + 默认 None」。\n\n调用:`GET /products?category=图书&min_price=50` → category=\"图书\", min_price=50.0。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-15.3",
+      "heading": "§15.3 Query 校验:约束查询参数(对应:分页参数)",
+      "secNum": "15.3",
+      "body": "`Query(默认值, 约束)` 给查询参数加约束(类似 Ch14 的 Field,但用于简单类型参数):\n\n```python\nfrom fastapi import Query\n\n@app.get(\"/products\")\ndef list_products(\n    page: int = Query(1, ge=1),             # 默认1,必须 >=1\n    size: int = Query(10, ge=1, le=100),    # 默认10,范围 1~100\n):\n    ...\n```\n\n| 约束 | 含义 |\n|------|------|\n| `ge=1` | >= 1 |\n| `le=100` | <= 100 |\n| `gt=0` | > 0 |\n| `lt=1000` | < 1000 |\n\n`page=0` 或 `size=200` 会被拒绝 → **422**。\n\n> ✅ 分页参数用 `Query(默认, ge=, le=)` 约束。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-15.4",
+      "heading": "§15.4 分页:切片(对应:`list_products` 分页)🟡",
+      "secNum": "15.4",
+      "body": "```python\nstart = (page - 1) * size       # 第 page 页 → 跳过 (page-1)*size 个\nreturn result[start:start + size]\n```\n\npage 从 1 开始(对前端友好),转换成 0-based 切片:\n- page=1, size=2 → `[0:2]`(第 1、2 个)\n- page=2, size=2 → `[2:4]`(第 3、4 个)\n- 超出范围 → `[]`(空列表,不是错误)\n\n> 🟡 这是标准分页公式,记住:`start = (page-1) * size`。Ch19 接数据库后会换成 SQL 的 `offset/limit`,但公式一样。\n\n> ✅ 做 `list_products` 题:筛选(两个可选参数)+ 分页切片组合。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-15.5",
+      "heading": "§15.5 速查:参数三来源判定(背下来)",
+      "secNum": "15.5",
+      "body": "```\ndef endpoint(\n    path_param: int,            # 名字在路径 {path_param} 里 → 路径参数\n    query_required: str,        # 简单类型,不在路径里,无默认 → 必填查询参数\n    query_optional: int = 10,   # 简单类型,有默认 → 可选查询参数\n    body: ProductCreate,        # Pydantic 模型 → 请求体\n):\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-15.6",
+      "heading": "§15.6 Java 老手常踩的坑 ⚠️",
+      "secNum": "15.6",
+      "body": "1. **路径参数和函数参数同名才匹配**:`/products/{product_id}` 要参数叫 `product_id`。名字不一致取不到。\n2. **可选查询参数用 `X | None = None`**:不是 `Optional[X]` 也行,但 `= None` 必须有(否则变必填)。\n3. **分页 page 从 1 开始**:别用 0-based page,前端约定俗成是 1-based。切片时 `(page-1)*size`。\n4. **超出范围的页返 `[]` 不是 404**:分页越界是空列表,正常业务结果。\n5. **路径参数类型错是 422 不是 404**:`/products/abc` 返 422(类型校验),不是 404。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| 筛选(category/min_price) | 可选查询参数 | 🟡 |\n| 分页(page/size) | Query 校验 + 切片 | 🟡 |\n| `get_product` | 路径参数 + 422 | 🟢 |\n\n```bash\nuv run pytest 03_web_framework/ch15/test_ch15_assignment.py -v\n```\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清 FastAPI 如何靠「路径里有没有 + 类型」自动区分路径参数/查询参数/请求体\n- [ ] 会写可选查询参数(`X | None = None`)并用 `is not None` 判断过滤\n- [ ] 会用 `Query(默认, ge=, le=)` 约束分页参数,知道越界返 422\n- [ ] 3 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「FastAPI 不写 @PathVariable/@RequestParam,怎么知道哪个参数从哪来?」— 重读 §15.1/§15.5\n2. 「可选查询参数怎么写?为什么用 `is not None` 判断而不是 `if category:`?」— 重读 §15.2",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步",
+      "heading": "⏭️ 下一步",
+      "secNum": null,
+      "body": "Ch15 掌握后,进 **Ch16 · 依赖注入**——FastAPI 最强大的设计之一(`Depends`,对比 Spring `@Autowired`)。把分页参数、当前用户、DB session 等公共逻辑抽成可复用的依赖。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "list_products",
+      "testClass": "TestListProducts",
+      "skeleton": "@app.get(\"/products\")\ndef list_products(\n    ..."
+    },
+    {
+      "name": "get_product",
+      "testClass": "TestGetProduct",
+      "skeleton": "@app.get(\"/products/{product_id}\")\ndef get_product(product_id: int):\n    \"\"\"\n    【路径参数 · §15.1】按 id 查单个商品;不存在 404。\n    product_id 是 int 注解 → URL 里的 \"1\" 自动转 int,非数字(如 /products/abc)返 422。\n\n    思路:遍历 PRODUCTS 找 id 匹配的返回;找不到 raise HTTPException(404)。\n    \"\"\"\n    # TODO: 查找;不存在 HTTPException(404)\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh15 作业:路由参数 —— 路径参数 / 查询参数 / 分页 / Query 校验。\n\n给商品 API 加【筛选】和【分页】:\n    GET /products?category=图书&min_price=50&page=1&size=10\n    GET /products/{id}\n\n    uv run pytest 03_web_framework/ch15/test_ch15_assignment.py -v\n\n每题【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nfrom fastapi import FastAPI, HTTPException, Query\nfrom pydantic import BaseModel\n\napp = FastAPI(title=\"商品查询 API\")\n\n\nclass Product(BaseModel):\n    id: int\n    name: str\n    category: str\n    price: float\n    stock: int = 0\n\n\nPRODUCTS: list[Product] = [\n    Product(id=1, name=\"机械键盘\", category=\"电脑外设\", price=599.0, stock=120),\n    Product(id=2, name=\"无线鼠标\", category=\"电脑外设\", price=159.0, stock=300),\n    Product(id=3, name=\"设计模式\", category=\"图书\", price=75.5, stock=200),\n    Product(id=4, name=\"Python编程\", category=\"图书\", price=89.0, stock=500),\n    Product(id=5, name=\"降噪耳机\", category=\"影音设备\", price=1299.0, stock=80),\n]\n\n\n):\n    \"\"\"\n    【查询参数 + 分页 · §15.2/§15.3/§15.4】支持按 category/min_price 筛选 + page/size 分页。\n    参数签名已给(category/min_price 可选,page/size 用 Query 校验)。你实现筛选+分页逻辑。\n\n    思路:\n        result = PRODUCTS\n        if category is not None:     # None 表示没传,不过滤\n            result = [p for p in result if p.category == category]\n        if min_price is not None:\n            result = [p for p in result if p.price >= min_price]\n        start = (page - 1) * size     # 分页切片起点(第几页 → 跳过多少个)\n        return result[start:start + size]\n    \"\"\"\n    # TODO: 筛选(category/min_price,只过滤「非 None 的」)+ 分页切片\n    ..."
+}

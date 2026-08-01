@@ -1,0 +1,178 @@
+{
+  "id": "ch31",
+  "num": "31",
+  "title": "RAG 实战:向量检索",
+  "runMode": "local",
+  "tutorialMd": "# Ch31 · RAG 实战:向量检索\n\n> **预计**:1 天 ｜ **前置**:Ch28、Ch29、Ch30 ｜ **M5 重点**\n> **目标**:掌握 RAG(Retrieval-Augmented Generation)——让 LLM 基于**你的文档**回答,而不是它训练时的旧知识。这是企业落地 LLM 的头号场景(客服、知识库、文档问答)。\n\n> 📐 **本教程的契约**:§31.2–§31.6 对应作业 5 个函数。**纯 Python + 假 embedding**,不用 torch。\n\n---\n\n## 🗺️ 本章地图\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `chunk_text` | §31.2 | 文档切片(滑动窗口 + overlap) |\n| `cosine_similarity` | §31.3 | 余弦相似度(向量接近度) |\n| `retrieve_top_k` | §31.4 | top-k 检索(按相似度排序) |\n| `build_context` | §31.5 | 拼上下文喂 LLM |\n| `hash_embed` | §31.6 | embedding 原理(假向量,真实换模型) |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 70 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. LLM 只记得训练时的知识,你的公司内部文档它根本没见过。怎么让它「知道」这些?\n2. 一个 100 页的 PDF,能整个塞进 prompt 吗?(提示:上下文窗口 + token 成本)\n3. 「语义搜索」和关键字搜索(SQL LIKE)有什么不同?怎么衡量两段话「意思接近」?\n4. 向量的「余弦相似度」为什么能表示语义接近?cosθ=1 代表什么?\n5. RAG 为什么比「微调模型」更常用?(便宜、可随时更新文档、可溯源)\n\n---\n\n## §31.1 RAG 是什么 + 为什么 🟡\n\nLLM 的知识有**截止日期**,且没见过你的私有数据。两种办法让它用你的数据:\n\n| 方式 | 做法 | 成本 | 何时用 |\n|------|------|------|--------|\n| **微调 fine-tune** | 拿你的数据重新训练模型权重 | 贵、慢、改数据要重训 | 风格/格式定制 |\n| **RAG** ✅ | 检索你的文档,塞进 prompt 让模型「开卷考试」 | 便宜、即时、可溯源 | **知识更新(默认选这个)** |\n\nRAG 流程(开卷考试):\n```\n用户提问\n  → 把问题变向量(embedding)\n  → 在你的文档向量库里找最相似的 top-k 段\n  → 把这些段拼成「上下文」塞进 prompt\n  → LLM 基于上下文回答(还能标注来源)\n```\n\n> 🟡 **Java 对比**:像 Elasticsearch 的语义版——但 ES 按关键字/词频,RAG 按「语义向量」找。RAG = 语义检索 + LLM 总结。\n\n> **为什么 RAG 是默认**:文档更新只要重建索引(几分钟),不用重训模型(几天+贵);还能告诉用户「答案来自第 3 页」(可溯源,企业必备)。\n\n---\n\n## §31.2 文档切片:chunk_text(对应)🟡\n\n文档太长塞不进 prompt(上下文窗口有限 + 贵)。先**切成小块**,只检索相关的几块:\n\n```python\ndef chunk_text(text, size=100, overlap=20):\n    if size <= 0:\n        return []\n    step = max(1, size - overlap)\n    return [text[i : i + size] for i in range(0, len(text), step)]\n```\n\n- 按 `size` 字符切,步长 `step = size - overlap`。\n- **overlap 重叠**:相邻块重叠 `overlap` 字符,防止「把一句话从中间切断」丢失上下文。\n- 切多大是权衡:太大→检索不精(混入无关)、费 token;太小→丢失段落语义。通常 200-1000 token,按句子/段落切更好(这里按字符是简化)。\n\n> ✅ 做 `chunk_text`:`step = max(1, size-overlap)`;`[text[i:i+size] for i in range(0,len,step)]`。\n\n---\n\n## §31.3 余弦相似度:cosine_similarity(对应)🔴\n\n衡量两个向量「多接近」的标准方法——**余弦相似度**:两向量夹角的余弦。\n\n```python\ndef cosine_similarity(a, b):\n    dot = sum(x * y for x, y in zip(a, b))\n    na = math.sqrt(sum(x * x for x in a))\n    nb = math.sqrt(sum(y * y for y in b))\n    return dot / (na * nb) if na and nb else 0.0\n```\n\n- `cosθ = a·b / (|a||b|)`——点积除以模长积。\n- 值域 **[-1, 1]**:1=同向(最相似)、0=正交(无关)、-1=反向。\n- **为什么用余弦不用欧氏距离**:文本向量关心「方向」(语义)不关心「长度」(词数)。两段意思相同但长短不同的话,余弦相似度仍高。\n- 零向量防除零(`if na and nb else 0.0`)。\n\n> 🔴 **Python 特有**:`sum(x*y for x,y in zip(a,b))` 生成器一行算点积,Java 要 for 循环或 Stream。数学公式直接翻译成代码。\n\n> ✅ 做 `cosine_similarity`:点积 / (模×模),零向量返回 0.0。\n\n---\n\n## §31.4 top-k 检索:retrieve_top_k(对应)🟢\n\n```python\ndef retrieve_top_k(query_vec, doc_vecs, k=3):\n    scored = [(cosine_similarity(query_vec, v), t) for t, v in doc_vecs]\n    scored.sort(key=lambda x: x[0], reverse=True)\n    return [t for _, t in scored[:k]]\n```\n\n- 给每个文档算与 query 的相似度 → 降序排 → 取前 k 个文本。\n- = Java `stream.sorted(comparingDouble(...).reversed()).limit(k)`。\n\n> ✅ 做 `retrieve_top_k`:`[(sim, t) for t,v in doc_vecs]` → `sort(reverse=True)` → 取前 k 的文本。\n\n---\n\n## §31.5 拼上下文:build_context(对应)🟢\n\n```python\ndef build_context(chunks, sep=\"\\n\\n\"):\n    return sep.join(chunks)\n```\n\n把检索到的片段拼成一段「参考资料」,塞进 prompt:\n```\n基于以下资料回答问题:\n{context}\n\n问题:{query}\n```\nLLM 就基于 context 回答(开卷考试)。\n\n> ✅ 做 `build_context`:`sep.join(chunks)`。\n\n---\n\n## §31.6 embedding:hash_embed(对应)🟡\n\n**embedding** = 把文本变成向量(让「语义接近」可计算)。真实用专门模型(`sentence-transformers` 本地,或 OpenAI/Anthropic embedding API):\n\n```python\n# 真实(要装 sentence-transformers,~torch,很重):\nfrom sentence_transformers import SentenceTransformer\nmodel = SentenceTransformer(\"all-MiniLM-L6-v2\")\nvec = model.encode(\"苹果\")        # 384 维向量,语义接近的文本向量接近\n```\n\n本作业用**确定性假向量** `hash_embed`(md5 映射)替代——只为跑通 RAG 流程,不表达真实语义:\n\n```python\ndef hash_embed(text, dim=16):\n    vec = []\n    for i in range(dim):\n        b = hashlib.md5(f\"{text}:{i}\".encode()).digest()[0]\n        vec.append((b - 127) / 127.0)\n    return vec\n```\n\n- 相同文本 → 相同向量(确定性);不同文本 → 不同向量。\n- **它不表达语义**(md5 是随机的),真实检索要用真 embedding 模型(语义接近的文本向量才接近)。\n\n> ✅ 做 `hash_embed`:循环 dim,每维 `md5(f\"{text}:{i}\")[0]` 映射到 -1..1。\n\n---\n\n## §31.7 完整 RAG 管道(讲透)\n\n```python\n# 1. 离线建库:文档切片 → 向量化 → 存(这里用 list,真实用 Chroma/pgvector)\ndocs = \"你的长文档...\"\nchunks = chunk_text(docs, size=200, overlap=30)\nembed = lambda t: hash_embed(t)          # 真实换 SentenceTransformer\ndoc_vecs = [(c, embed(c)) for c in chunks]\n\n# 2. 在线检索回答\ndef rag_answer(query):\n    qvec = embed(query)\n    top = retrieve_top_k(qvec, doc_vecs, k=3)\n    context = build_context(top)\n    prompt = f\"基于以下资料回答:\\n{context}\\n\\n问题:{query}\"\n    return call_llm(client, \"你是文档助手\", prompt)   # Ch28\n```\n\n切→嵌→存→检→拼→答。这就是 RAG。真实工程还要:向量库(Chroma/pgvector/FAISS)、重排序(rerank)、引用溯源、增量更新。\n\n---\n\n## §31.8 向量库选型 + 进阶(讲透不出题)\n\n| 向量库 | 场景 |\n|--------|------|\n| **Chroma** | 本地开发/入门,Python 友好 |\n| **FAISS** | Meta 出的,纯检索库,快 |\n| **pgvector** | PostgreSQL 扩展,和业务数据同库 |\n| 托管(Pinecone 等) | 省运维 |\n\n进阶:**rerank**(检索 top-20 后用专门模型精排 top-3)、**混合检索**(关键字 + 向量)、**引用溯源**(记录每段来自哪个文档第几页)。\n\n---\n\n## §31.9 Java 老手常踩的坑 ⚠️\n\n1. **整个文档塞 prompt**:超窗口 + 贵。要切片 + 检索相关段。\n2. **用欧氏距离不用余弦**:文本向量关心方向不关心长度,用余弦。\n3. **切片无 overlap**:句子从中间断,语义丢失。加 overlap。\n4. **chunk 太大/太小**:太大检索不精,太小丢段落语义。按句子/段落切更好。\n5. **hash_embed 当真 embedding 用**:它不表达语义(随机),只为跑流程。真实用 embedding 模型。\n6. **不溯源**:企业场景答案要能点回原文(哪段来的)。记录来源。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `chunk_text` | 切片 + overlap | 🟡 |\n| `cosine_similarity` | 向量相似度数学 | 🔴 |\n| `retrieve_top_k` | top-k 排序检索 | 🟢 |\n| `build_context` | 拼上下文 | 🟢 |\n| `hash_embed` | embedding 原理(假向量) | 🟡 |\n\n```bash\nuv run pytest 05_ai_framework/ch31/test_ch31_assignment.py -v\n```\n\n全绿 = 掌握 Ch31。\n\n---\n\n## ✅ 自测\n\n- [ ] 能说清 RAG 是什么、为什么比微调更常用\n- [ ] 会切片(滑动窗口 + overlap)\n- [ ] 会算余弦相似度,知道为什么用余弦不用欧氏\n- [ ] 能组装「切→嵌→检→拼」的 RAG 管道\n- [ ] 知道 hash_embed 只是假向量,真实用 embedding 模型\n- [ ] 5 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「RAG 和微调各适合什么?为什么 RAG 是默认?」— 重读 §31.1\n2. 「为什么用余弦相似度不用欧氏距离?」— 重读 §31.3\n3. 「hash_embed 和真实 embedding 的区别?为什么不能用 hash_embed 做真实检索?」— 重读 §31.6\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步:Ch32 Agent\n\nRAG 是「给 LLM 资料让它答」。接下来 Agent——让 LLM **自主调工具**(查数据库、调 API、算数),ReAct 循环:思考→调工具→观察→再思考。从「被动答」到「主动干」。\n",
+  "assignment": "\"\"\"\nCh31 作业:RAG 实战(向量检索)。\n\nRAG = Retrieval-Augmented Generation:让 LLM 基于【你的文档】回答。\n管道:文档切片 → 向量化(embedding)→ 存向量库 → 用问句检索 top-k → 拼成上下文 → 喂 LLM。\n\n设计要点:本作业【不用真实 embedding 模型】(那要 torch/sentence-transformers,很重)。\n用纯 Python 实现 RAG 的核心数学:切片、余弦相似度、top-k 检索。embedding 用一个\n确定性的 hash_embed(假向量)替代,理解原理即可。真实场景把 hash_embed 换成真模型。\n\n5 个函数,纯 Python。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch31/test_ch31_assignment.py -v\n\n全绿 = 你掌握了 Ch31。\n\"\"\"\nimport hashlib\nimport math\n\n\n# ========== §31.2 切片:chunk_text ==========\n\n\ndef chunk_text(text: str, size: int = 100, overlap: int = 20) -> list[str]:\n    \"\"\"\n    【切片 · §31.2】把长文本按 size 字符切片,相邻片之间重叠 overlap 字符(保上下文连贯)。\n\n    示例:\n        chunk_text(\"abcdef\", size=3, overlap=1)  -> [\"abc\", \"cde\", \"ef\"]   # step=2\n        chunk_text(\"abcdef\", size=3, overlap=0)  -> [\"abc\", \"def\"]\n        chunk_text(\"\", size=5)                   -> []\n\n    思路(滑动窗口,step = size - overlap):\n        if size <= 0: return []\n        step = max(1, size - overlap)\n        return [text[i:i+size] for i in range(0, len(text), step)]\n    \"\"\"\n    # TODO: step=size-overlap;滑动窗口切片\n    ...\n\n\n# ========== §31.3 余弦相似度:cosine_similarity ==========\n\n\ndef cosine_similarity(a: list[float], b: list[float]) -> float:\n    \"\"\"\n    【相似度 · §31.3】两个向量的余弦相似度:cosθ = a·b / (|a||b|)。\n    值域 [-1, 1]:1=同向(最相似),0=正交(无关),-1=反向。RAG 用它排相似度。\n\n    示例:\n        cosine_similarity([1,0], [1,0])   -> 1.0\n        cosine_similarity([1,0], [0,1])   -> 0.0\n        cosine_similarity([1,0], [-1,0])  -> -1.0\n        cosine_similarity([0,0], [1,1])   -> 0.0   # 零向量防除零\n\n    思路:\n        dot = sum(x*y for x, y in zip(a, b))\n        na = math.sqrt(sum(x*x for x in a))\n        nb = math.sqrt(sum(y*y for y in b))\n        return dot / (na * nb) if na and nb else 0.0\n    \"\"\"\n    # TODO: 点积 / (模*模),零向量返回 0.0\n    ...\n\n\n# ========== §31.4 top-k 检索:retrieve_top_k ==========\n\n\ndef retrieve_top_k(\n    query_vec: list[float],\n    doc_vecs: list[tuple[str, list[float]]],\n    k: int = 3,\n) -> list[str]:\n    \"\"\"\n    【检索 · §31.4】从 (文本, 向量) 列表里,按与 query_vec 的相似度降序取前 k 个文本。\n    doc_vecs = [(\"苹果\", [1,0]), ...]。\n\n    示例:\n        docs = [(\"苹果\",[1,0]), (\"香蕉\",[0,1]), (\"梨\",[1,1])]\n        retrieve_top_k([1,0], docs, k=2)  -> [\"苹果\", \"梨\"]   # 苹果1.0 > 梨0.707 > 香蕉0\n\n    思路(算相似度 → 排序 → 取前 k 的文本):\n        scored = [(cosine_similarity(query_vec, v), t) for t, v in doc_vecs]\n        scored.sort(key=lambda x: x[0], reverse=True)\n        return [t for _, t in scored[:k]]\n    \"\"\"\n    # TODO: 算每个 doc 的相似度,降序取前 k 个文本\n    ...\n\n\n# ========== §31.5 拼上下文:build_context ==========\n\n\ndef build_context(chunks: list[str], sep: str = \"\\n\\n\") -> str:\n    \"\"\"\n    【上下文 · §31.5】把检索到的若干片段拼成一个上下文字符串,塞进 prompt。\n    通常加分隔符让 LLM 知道是不同片段。\n\n    示例:\n        build_context([\"片段A\", \"片段B\"]) -> \"片段A\\\\n\\\\n片段B\"\n        build_context([])                 -> \"\"\n\n    思路:\n        return sep.join(chunks)\n    \"\"\"\n    # TODO: sep.join(chunks)\n    ...\n\n\n# ========== §31.6 假 embedding:hash_embed ==========\n\n\ndef hash_embed(text: str, dim: int = 16) -> list[float]:\n    \"\"\"\n    【embedding · §31.6】【确定性假向量】——为相同文本生成相同的 dim 维向量(用 hash)。\n    仅用于离线测试 RAG 流程;真实场景换成 sentence-transformers / OpenAI embedding。\n\n    示例:\n        hash_embed(\"苹果\")          -> 16 维 list[float]\n        hash_embed(\"苹果\") == hash_embed(\"苹果\")   # 确定性\n        hash_embed(\"苹果\") != hash_embed(\"香蕉\")   # 不同文本不同向量\n        len(hash_embed(\"x\", dim=8)) == 8\n\n    思路(每维用 md5(text:i) 取一个字节,映射到 -1..1):\n        vec = []\n        for i in range(dim):\n            b = hashlib.md5(f\"{text}:{i}\".encode()).digest()[0]\n            vec.append((b - 127) / 127.0)\n        return vec\n    \"\"\"\n    # TODO: 循环 dim,每维 md5(text:i) 取字节映射 -1..1\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(chunk_text(\"abcdef\", size=3, overlap=1))\n    print(cosine_similarity([1, 0], [1, 1]))\n    docs = [(\"苹果\", hash_embed(\"苹果\")), (\"香蕉\", hash_embed(\"香蕉\"))]\n    print(retrieve_top_k(hash_embed(\"苹果\"), docs, k=1))\n",
+  "testName": "ch31_assignment",
+  "testSource": "\"\"\"\nCh31 作业测试。运行: uv run pytest 05_ai_framework/ch31/test_ch31_assignment.py -v\n\"\"\"\nimport math\n\nimport pytest\n\nfrom ch31_assignment import (\n    build_context,\n    chunk_text,\n    cosine_similarity,\n    hash_embed,\n    retrieve_top_k,\n)\n\n\n# ---------- chunk_text ----------\nclass TestChunkText:\n    def test_overlap(self):\n        assert chunk_text(\"abcdef\", size=3, overlap=1) == [\"abc\", \"cde\", \"ef\"]\n\n    def test_no_overlap(self):\n        assert chunk_text(\"abcdef\", size=3, overlap=0) == [\"abc\", \"def\"]\n\n    def test_text_shorter_than_size(self):\n        assert chunk_text(\"abc\", size=10, overlap=2) == [\"abc\"]\n\n    def test_empty(self):\n        assert chunk_text(\"\", size=5) == []\n\n    def test_invalid_size(self):\n        assert chunk_text(\"abc\", size=0) == []\n\n    def test_default_params(self):\n        # 默认 size=100 overlap=20\n        result = chunk_text(\"x\" * 250)\n        assert len(result) > 1\n        assert all(len(c) <= 100 for c in result)\n\n\n# ---------- cosine_similarity ----------\nclass TestCosineSimilarity:\n    def test_identical(self):\n        assert cosine_similarity([1, 0], [1, 0]) == pytest.approx(1.0)\n\n    def test_orthogonal(self):\n        assert cosine_similarity([1, 0], [0, 1]) == pytest.approx(0.0)\n\n    def test_opposite(self):\n        assert cosine_similarity([1, 0], [-1, 0]) == pytest.approx(-1.0)\n\n    def test_diagonal(self):\n        assert cosine_similarity([1, 0], [1, 1]) == pytest.approx(1 / math.sqrt(2))\n\n    def test_zero_vector(self):\n        assert cosine_similarity([0, 0], [1, 1]) == 0.0\n        assert cosine_similarity([0, 0], [0, 0]) == 0.0\n\n    def test_three_dim(self):\n        assert cosine_similarity([1, 2, 3], [1, 2, 3]) == pytest.approx(1.0)\n\n\n# ---------- retrieve_top_k ----------\nclass TestRetrieveTopK:\n    def test_ordering(self):\n        docs = [(\"苹果\", [1, 0]), (\"香蕉\", [0, 1]), (\"梨\", [1, 1])]\n        assert retrieve_top_k([1, 0], docs, k=2) == [\"苹果\", \"梨\"]\n\n    def test_k_larger_than_docs(self):\n        docs = [(\"a\", [1, 0]), (\"b\", [0, 1])]\n        assert set(retrieve_top_k([1, 0], docs, k=10)) == {\"a\", \"b\"}\n\n    def test_k_one(self):\n        docs = [(\"近\", [1, 0]), (\"远\", [0, 1])]\n        assert retrieve_top_k([1, 0], docs, k=1) == [\"近\"]\n\n    def test_empty(self):\n        assert retrieve_top_k([1, 0], [], k=3) == []\n\n    def test_all_equal_similarities(self):\n        docs = [(\"a\", [1, 0]), (\"b\", [1, 0])]\n        result = retrieve_top_k([1, 0], docs, k=2)\n        assert set(result) == {\"a\", \"b\"}\n\n\n# ---------- build_context ----------\nclass TestBuildContext:\n    def test_join(self):\n        assert build_context([\"片段A\", \"片段B\"]) == \"片段A\\n\\n片段B\"\n\n    def test_custom_sep(self):\n        assert build_context([\"a\", \"b\"], sep=\" | \") == \"a | b\"\n\n    def test_empty(self):\n        assert build_context([]) == \"\"\n\n    def test_single(self):\n        assert build_context([\"only\"]) == \"only\"\n\n\n# ---------- hash_embed ----------\nclass TestHashEmbed:\n    def test_dimension(self):\n        assert len(hash_embed(\"x\", dim=8)) == 8\n        assert len(hash_embed(\"x\")) == 16  # 默认 dim=16\n\n    def test_deterministic(self):\n        assert hash_embed(\"苹果\") == hash_embed(\"苹果\")\n\n    def test_different_text_different_vec(self):\n        assert hash_embed(\"苹果\") != hash_embed(\"香蕉\")\n\n    def test_values_in_range(self):\n        v = hash_embed(\"test\", dim=32)\n        assert all(-1.0 <= x <= 1.0 for x in v)\n\n    def test_not_all_zero(self):\n        v = hash_embed(\"hello\", dim=16)\n        assert any(abs(x) > 0.01 for x in v)\n",
+  "reviewMd": "# Ch31 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | RAG 是什么?为什么比微调常用? | Retrieval-Augmented Generation:检索文档塞进 prompt 让 LLM 开卷考试。比微调便宜/即时/可溯源(改文档重建索引即可,不用重训) | ⬜ |\n| 2 | RAG 管道几步? | 切片(chunk)→ 向量化(embed)→ 存向量库 → 检索 top-k → 拼上下文 → 喂 LLM 答 | ⬜ |\n| 3 | chunk_text 的 overlap 干嘛? | 相邻块重叠 overlap 字符,防止句子从中间切断丢失上下文。step=size-overlap | ⬜ |\n| 4 | 余弦相似度公式?值域? | cosθ = a·b/(|a||b|)。值域[-1,1]:1同向最似,0正交无关,-1反向。文本关心方向(语义)不关心长度,所以用余弦不用欧氏 | ⬜ |\n| 5 | 零向量算相似度怎么办? | 防除零:if na and nb else 0.0。零向量和任何向量相似度定义为 0 | ⬜ |\n| 6 | retrieve_top_k 怎么做? | [(cos_sim(q,v), text) for ...] → sort(reverse=True) → 取前 k 个文本。= Java stream sorted reversed limit | ⬜ |\n| 7 | hash_embed 和真 embedding 区别? | hash_embed 是确定性假向量(md5 映射),相同文本相同向量但【不表达语义】。真实用 sentence-transformers/OpenAI,语义接近文本向量才接近 | ⬜ |\n| 8 | 向量库选型?进阶? | Chroma(本地入门)/FAISS(快)/pgvector(同业务库)/Pinecone(托管)。进阶:rerank 精排、混合检索(关键字+向量)、引用溯源 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「RAG vs 微调 + 为什么 RAG 默认」?\n- [ ] 能说清「余弦相似度 vs 欧氏距离」?\n- [ ] 能说清「hash_embed 假向量 vs 真 embedding」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:1 天 ｜ **前置**:Ch28、Ch29、Ch30 ｜ **M5 重点**\n> **目标**:掌握 RAG(Retrieval-Augmented Generation)——让 LLM 基于**你的文档**回答,而不是它训练时的旧知识。这是企业落地 LLM 的头号场景(客服、知识库、文档问答)。\n\n> 📐 **本教程的契约**:§31.2–§31.6 对应作业 5 个函数。**纯 Python + 假 embedding**,不用 torch。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `chunk_text` | §31.2 | 文档切片(滑动窗口 + overlap) |\n| `cosine_similarity` | §31.3 | 余弦相似度(向量接近度) |\n| `retrieve_top_k` | §31.4 | top-k 检索(按相似度排序) |\n| `build_context` | §31.5 | 拼上下文喂 LLM |\n| `hash_embed` | §31.6 | embedding 原理(假向量,真实换模型) |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-70-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 70 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. LLM 只记得训练时的知识,你的公司内部文档它根本没见过。怎么让它「知道」这些?\n2. 一个 100 页的 PDF,能整个塞进 prompt 吗?(提示:上下文窗口 + token 成本)\n3. 「语义搜索」和关键字搜索(SQL LIKE)有什么不同?怎么衡量两段话「意思接近」?\n4. 向量的「余弦相似度」为什么能表示语义接近?cosθ=1 代表什么?\n5. RAG 为什么比「微调模型」更常用?(便宜、可随时更新文档、可溯源)\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-31.1",
+      "heading": "§31.1 RAG 是什么 + 为什么 🟡",
+      "secNum": "31.1",
+      "body": "LLM 的知识有**截止日期**,且没见过你的私有数据。两种办法让它用你的数据:\n\n| 方式 | 做法 | 成本 | 何时用 |\n|------|------|------|--------|\n| **微调 fine-tune** | 拿你的数据重新训练模型权重 | 贵、慢、改数据要重训 | 风格/格式定制 |\n| **RAG** ✅ | 检索你的文档,塞进 prompt 让模型「开卷考试」 | 便宜、即时、可溯源 | **知识更新(默认选这个)** |\n\nRAG 流程(开卷考试):\n```\n用户提问\n  → 把问题变向量(embedding)\n  → 在你的文档向量库里找最相似的 top-k 段\n  → 把这些段拼成「上下文」塞进 prompt\n  → LLM 基于上下文回答(还能标注来源)\n```\n\n> 🟡 **Java 对比**:像 Elasticsearch 的语义版——但 ES 按关键字/词频,RAG 按「语义向量」找。RAG = 语义检索 + LLM 总结。\n\n> **为什么 RAG 是默认**:文档更新只要重建索引(几分钟),不用重训模型(几天+贵);还能告诉用户「答案来自第 3 页」(可溯源,企业必备)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-31.2",
+      "heading": "§31.2 文档切片:chunk_text(对应)🟡",
+      "secNum": "31.2",
+      "body": "文档太长塞不进 prompt(上下文窗口有限 + 贵)。先**切成小块**,只检索相关的几块:\n\n```python\ndef chunk_text(text, size=100, overlap=20):\n    if size <= 0:\n        return []\n    step = max(1, size - overlap)\n    return [text[i : i + size] for i in range(0, len(text), step)]\n```\n\n- 按 `size` 字符切,步长 `step = size - overlap`。\n- **overlap 重叠**:相邻块重叠 `overlap` 字符,防止「把一句话从中间切断」丢失上下文。\n- 切多大是权衡:太大→检索不精(混入无关)、费 token;太小→丢失段落语义。通常 200-1000 token,按句子/段落切更好(这里按字符是简化)。\n\n> ✅ 做 `chunk_text`:`step = max(1, size-overlap)`;`[text[i:i+size] for i in range(0,len,step)]`。\n\n---",
+      "exerciseFunctions": [
+        "chunk_text"
+      ]
+    },
+    {
+      "id": "sec-31.3",
+      "heading": "§31.3 余弦相似度:cosine_similarity(对应)🔴",
+      "secNum": "31.3",
+      "body": "衡量两个向量「多接近」的标准方法——**余弦相似度**:两向量夹角的余弦。\n\n```python\ndef cosine_similarity(a, b):\n    dot = sum(x * y for x, y in zip(a, b))\n    na = math.sqrt(sum(x * x for x in a))\n    nb = math.sqrt(sum(y * y for y in b))\n    return dot / (na * nb) if na and nb else 0.0\n```\n\n- `cosθ = a·b / (|a||b|)`——点积除以模长积。\n- 值域 **[-1, 1]**:1=同向(最相似)、0=正交(无关)、-1=反向。\n- **为什么用余弦不用欧氏距离**:文本向量关心「方向」(语义)不关心「长度」(词数)。两段意思相同但长短不同的话,余弦相似度仍高。\n- 零向量防除零(`if na and nb else 0.0`)。\n\n> 🔴 **Python 特有**:`sum(x*y for x,y in zip(a,b))` 生成器一行算点积,Java 要 for 循环或 Stream。数学公式直接翻译成代码。\n\n> ✅ 做 `cosine_similarity`:点积 / (模×模),零向量返回 0.0。\n\n---",
+      "exerciseFunctions": [
+        "cosine_similarity"
+      ]
+    },
+    {
+      "id": "sec-31.4",
+      "heading": "§31.4 top-k 检索:retrieve_top_k(对应)🟢",
+      "secNum": "31.4",
+      "body": "```python\ndef retrieve_top_k(query_vec, doc_vecs, k=3):\n    scored = [(cosine_similarity(query_vec, v), t) for t, v in doc_vecs]\n    scored.sort(key=lambda x: x[0], reverse=True)\n    return [t for _, t in scored[:k]]\n```\n\n- 给每个文档算与 query 的相似度 → 降序排 → 取前 k 个文本。\n- = Java `stream.sorted(comparingDouble(...).reversed()).limit(k)`。\n\n> ✅ 做 `retrieve_top_k`:`[(sim, t) for t,v in doc_vecs]` → `sort(reverse=True)` → 取前 k 的文本。\n\n---",
+      "exerciseFunctions": [
+        "retrieve_top_k"
+      ]
+    },
+    {
+      "id": "sec-31.5",
+      "heading": "§31.5 拼上下文:build_context(对应)🟢",
+      "secNum": "31.5",
+      "body": "```python\ndef build_context(chunks, sep=\"\\n\\n\"):\n    return sep.join(chunks)\n```\n\n把检索到的片段拼成一段「参考资料」,塞进 prompt:\n```\n基于以下资料回答问题:\n{context}\n\n问题:{query}\n```\nLLM 就基于 context 回答(开卷考试)。\n\n> ✅ 做 `build_context`:`sep.join(chunks)`。\n\n---",
+      "exerciseFunctions": [
+        "build_context"
+      ]
+    },
+    {
+      "id": "sec-31.6",
+      "heading": "§31.6 embedding:hash_embed(对应)🟡",
+      "secNum": "31.6",
+      "body": "**embedding** = 把文本变成向量(让「语义接近」可计算)。真实用专门模型(`sentence-transformers` 本地,或 OpenAI/Anthropic embedding API):\n\n```python\n# 真实(要装 sentence-transformers,~torch,很重):\nfrom sentence_transformers import SentenceTransformer\nmodel = SentenceTransformer(\"all-MiniLM-L6-v2\")\nvec = model.encode(\"苹果\")        # 384 维向量,语义接近的文本向量接近\n```\n\n本作业用**确定性假向量** `hash_embed`(md5 映射)替代——只为跑通 RAG 流程,不表达真实语义:\n\n```python\ndef hash_embed(text, dim=16):\n    vec = []\n    for i in range(dim):\n        b = hashlib.md5(f\"{text}:{i}\".encode()).digest()[0]\n        vec.append((b - 127) / 127.0)\n    return vec\n```\n\n- 相同文本 → 相同向量(确定性);不同文本 → 不同向量。\n- **它不表达语义**(md5 是随机的),真实检索要用真 embedding 模型(语义接近的文本向量才接近)。\n\n> ✅ 做 `hash_embed`:循环 dim,每维 `md5(f\"{text}:{i}\")[0]` 映射到 -1..1。\n\n---",
+      "exerciseFunctions": [
+        "hash_embed"
+      ]
+    },
+    {
+      "id": "sec-31.7",
+      "heading": "§31.7 完整 RAG 管道(讲透)",
+      "secNum": "31.7",
+      "body": "```python\n# 1. 离线建库:文档切片 → 向量化 → 存(这里用 list,真实用 Chroma/pgvector)\ndocs = \"你的长文档...\"\nchunks = chunk_text(docs, size=200, overlap=30)\nembed = lambda t: hash_embed(t)          # 真实换 SentenceTransformer\ndoc_vecs = [(c, embed(c)) for c in chunks]\n\n# 2. 在线检索回答\ndef rag_answer(query):\n    qvec = embed(query)\n    top = retrieve_top_k(qvec, doc_vecs, k=3)\n    context = build_context(top)\n    prompt = f\"基于以下资料回答:\\n{context}\\n\\n问题:{query}\"\n    return call_llm(client, \"你是文档助手\", prompt)   # Ch28\n```\n\n切→嵌→存→检→拼→答。这就是 RAG。真实工程还要:向量库(Chroma/pgvector/FAISS)、重排序(rerank)、引用溯源、增量更新。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-31.8",
+      "heading": "§31.8 向量库选型 + 进阶(讲透不出题)",
+      "secNum": "31.8",
+      "body": "| 向量库 | 场景 |\n|--------|------|\n| **Chroma** | 本地开发/入门,Python 友好 |\n| **FAISS** | Meta 出的,纯检索库,快 |\n| **pgvector** | PostgreSQL 扩展,和业务数据同库 |\n| 托管(Pinecone 等) | 省运维 |\n\n进阶:**rerank**(检索 top-20 后用专门模型精排 top-3)、**混合检索**(关键字 + 向量)、**引用溯源**(记录每段来自哪个文档第几页)。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-31.9",
+      "heading": "§31.9 Java 老手常踩的坑 ⚠️",
+      "secNum": "31.9",
+      "body": "1. **整个文档塞 prompt**:超窗口 + 贵。要切片 + 检索相关段。\n2. **用欧氏距离不用余弦**:文本向量关心方向不关心长度,用余弦。\n3. **切片无 overlap**:句子从中间断,语义丢失。加 overlap。\n4. **chunk 太大/太小**:太大检索不精,太小丢段落语义。按句子/段落切更好。\n5. **hash_embed 当真 embedding 用**:它不表达语义(随机),只为跑流程。真实用 embedding 模型。\n6. **不溯源**:企业场景答案要能点回原文(哪段来的)。记录来源。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `chunk_text` | 切片 + overlap | 🟡 |\n| `cosine_similarity` | 向量相似度数学 | 🔴 |\n| `retrieve_top_k` | top-k 排序检索 | 🟢 |\n| `build_context` | 拼上下文 | 🟢 |\n| `hash_embed` | embedding 原理(假向量) | 🟡 |\n\n```bash\nuv run pytest 05_ai_framework/ch31/test_ch31_assignment.py -v\n```\n\n全绿 = 掌握 Ch31。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 能说清 RAG 是什么、为什么比微调更常用\n- [ ] 会切片(滑动窗口 + overlap)\n- [ ] 会算余弦相似度,知道为什么用余弦不用欧氏\n- [ ] 能组装「切→嵌→检→拼」的 RAG 管道\n- [ ] 知道 hash_embed 只是假向量,真实用 embedding 模型\n- [ ] 5 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「RAG 和微调各适合什么?为什么 RAG 是默认?」— 重读 §31.1\n2. 「为什么用余弦相似度不用欧氏距离?」— 重读 §31.3\n3. 「hash_embed 和真实 embedding 的区别?为什么不能用 hash_embed 做真实检索?」— 重读 §31.6",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步-Ch32-Agent",
+      "heading": "⏭️ 下一步:Ch32 Agent",
+      "secNum": null,
+      "body": "RAG 是「给 LLM 资料让它答」。接下来 Agent——让 LLM **自主调工具**(查数据库、调 API、算数),ReAct 循环:思考→调工具→观察→再思考。从「被动答」到「主动干」。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "chunk_text",
+      "testClass": "TestChunkText",
+      "skeleton": "def chunk_text(text: str, size: int = 100, overlap: int = 20) -> list[str]:\n    \"\"\"\n    【切片 · §31.2】把长文本按 size 字符切片,相邻片之间重叠 overlap 字符(保上下文连贯)。\n\n    示例:\n        chunk_text(\"abcdef\", size=3, overlap=1)  -> [\"abc\", \"cde\", \"ef\"]   # step=2\n        chunk_text(\"abcdef\", size=3, overlap=0)  -> [\"abc\", \"def\"]\n        chunk_text(\"\", size=5)                   -> []\n\n    思路(滑动窗口,step = size - overlap):\n        if size <= 0: return []\n        step = max(1, size - overlap)\n        return [text[i:i+size] for i in range(0, len(text), step)]\n    \"\"\"\n    # TODO: step=size-overlap;滑动窗口切片\n    ..."
+    },
+    {
+      "name": "cosine_similarity",
+      "testClass": "TestCosineSimilarity",
+      "skeleton": "def cosine_similarity(a: list[float], b: list[float]) -> float:\n    \"\"\"\n    【相似度 · §31.3】两个向量的余弦相似度:cosθ = a·b / (|a||b|)。\n    值域 [-1, 1]:1=同向(最相似),0=正交(无关),-1=反向。RAG 用它排相似度。\n\n    示例:\n        cosine_similarity([1,0], [1,0])   -> 1.0\n        cosine_similarity([1,0], [0,1])   -> 0.0\n        cosine_similarity([1,0], [-1,0])  -> -1.0\n        cosine_similarity([0,0], [1,1])   -> 0.0   # 零向量防除零\n\n    思路:\n        dot = sum(x*y for x, y in zip(a, b))\n        na = math.sqrt(sum(x*x for x in a))\n        nb = math.sqrt(sum(y*y for y in b))\n        return dot / (na * nb) if na and nb else 0.0\n    \"\"\"\n    # TODO: 点积 / (模*模),零向量返回 0.0\n    ..."
+    },
+    {
+      "name": "retrieve_top_k",
+      "testClass": "TestRetrieveTopK",
+      "skeleton": "def retrieve_top_k(\n    ..."
+    },
+    {
+      "name": "build_context",
+      "testClass": "TestBuildContext",
+      "skeleton": "def build_context(chunks: list[str], sep: str = \"\\n\\n\") -> str:\n    \"\"\"\n    【上下文 · §31.5】把检索到的若干片段拼成一个上下文字符串,塞进 prompt。\n    通常加分隔符让 LLM 知道是不同片段。\n\n    示例:\n        build_context([\"片段A\", \"片段B\"]) -> \"片段A\\\\n\\\\n片段B\"\n        build_context([])                 -> \"\"\n\n    思路:\n        return sep.join(chunks)\n    \"\"\"\n    # TODO: sep.join(chunks)\n    ..."
+    },
+    {
+      "name": "hash_embed",
+      "testClass": "TestHashEmbed",
+      "skeleton": "def hash_embed(text: str, dim: int = 16) -> list[float]:\n    \"\"\"\n    【embedding · §31.6】【确定性假向量】——为相同文本生成相同的 dim 维向量(用 hash)。\n    仅用于离线测试 RAG 流程;真实场景换成 sentence-transformers / OpenAI embedding。\n\n    示例:\n        hash_embed(\"苹果\")          -> 16 维 list[float]\n        hash_embed(\"苹果\") == hash_embed(\"苹果\")   # 确定性\n        hash_embed(\"苹果\") != hash_embed(\"香蕉\")   # 不同文本不同向量\n        len(hash_embed(\"x\", dim=8)) == 8\n\n    思路(每维用 md5(text:i) 取一个字节,映射到 -1..1):\n        vec = []\n        for i in range(dim):\n            b = hashlib.md5(f\"{text}:{i}\".encode()).digest()[0]\n            vec.append((b - 127) / 127.0)\n        return vec\n    \"\"\"\n    # TODO: 循环 dim,每维 md5(text:i) 取字节映射 -1..1\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh31 作业:RAG 实战(向量检索)。\n\nRAG = Retrieval-Augmented Generation:让 LLM 基于【你的文档】回答。\n管道:文档切片 → 向量化(embedding)→ 存向量库 → 用问句检索 top-k → 拼成上下文 → 喂 LLM。\n\n设计要点:本作业【不用真实 embedding 模型】(那要 torch/sentence-transformers,很重)。\n用纯 Python 实现 RAG 的核心数学:切片、余弦相似度、top-k 检索。embedding 用一个\n确定性的 hash_embed(假向量)替代,理解原理即可。真实场景把 hash_embed 换成真模型。\n\n5 个函数,纯 Python。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch31/test_ch31_assignment.py -v\n\n全绿 = 你掌握了 Ch31。\n\"\"\"\nimport hashlib\nimport math\n\n\n# ========== §31.2 切片:chunk_text ==========\n\n\n# ========== §31.3 余弦相似度:cosine_similarity ==========\n\n\n# ========== §31.4 top-k 检索:retrieve_top_k ==========\n\n\n) -> list[str]:\n    \"\"\"\n    【检索 · §31.4】从 (文本, 向量) 列表里,按与 query_vec 的相似度降序取前 k 个文本。\n    doc_vecs = [(\"苹果\", [1,0]), ...]。\n\n    示例:\n        docs = [(\"苹果\",[1,0]), (\"香蕉\",[0,1]), (\"梨\",[1,1])]\n        retrieve_top_k([1,0], docs, k=2)  -> [\"苹果\", \"梨\"]   # 苹果1.0 > 梨0.707 > 香蕉0\n\n    思路(算相似度 → 排序 → 取前 k 的文本):\n        scored = [(cosine_similarity(query_vec, v), t) for t, v in doc_vecs]\n        scored.sort(key=lambda x: x[0], reverse=True)\n        return [t for _, t in scored[:k]]\n    \"\"\"\n    # TODO: 算每个 doc 的相似度,降序取前 k 个文本\n    ...\n\n\n# ========== §31.5 拼上下文:build_context ==========\n\n\n# ========== §31.6 假 embedding:hash_embed ==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(chunk_text(\"abcdef\", size=3, overlap=1))\n    print(cosine_similarity([1, 0], [1, 1]))\n    docs = [(\"苹果\", hash_embed(\"苹果\")), (\"香蕉\", hash_embed(\"香蕉\"))]\n    print(retrieve_top_k(hash_embed(\"苹果\"), docs, k=1))"
+}

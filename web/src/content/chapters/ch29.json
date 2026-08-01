@@ -1,0 +1,171 @@
+{
+  "id": "ch29",
+  "num": "29",
+  "title": "Prompt 工程与结构化输出",
+  "runMode": "local",
+  "tutorialMd": "# Ch29 · Prompt 工程与结构化输出\n\n> **预计**:0.5 天 ｜ **前置**:Ch28、Ch14(Pydantic)｜ **M5 第 2 章**\n> **目标**:① 学会让模型更好作答的 Prompt 套路(模板、few-shot、CoT);② 让模型**稳定返回结构化数据**——用 Pydantic 把 LLM 吐出的(带噪声的)文本变成强类型对象,告别手写正则。\n\n> 📐 **本教程的契约**:§29.2–§29.6 对应作业 5 个函数。纯字符串 + Pydantic,不调真实 LLM。\n\n---\n\n## 🗺️ 本章地图\n\n| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `fill_template` | §29.2 | str.format_map + 容错(缺失占位符不报错) |\n| `build_few_shot_prompt` | §29.3 | few-shot:给示例让模型照做 |\n| `parse_json_lenient` | §29.4 | 从带噪声文本抠 JSON(围栏/前后文) |\n| `parse_structured` | §29.5 | JSON → Pydantic 模型(类型校验) |\n| `build_cot_prompt` | §29.6 | CoT:要求先推理再答 |\n\n---\n\n## ⏱️ 学习路径:费曼五步(约 50 分钟)\n\n① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---\n\n## ① 预览猜\n\n1. 同一个 LLM,为什么换个问法答案质量差很多?「Prompt 工程」是玄学还是工程?\n2. Java 里 `String.format(\"Hi %s\", name)`,Python 怎么填模板?如果占位符没给值,Python 会怎样?\n3. 模型有时把 JSON 包在 ```` ```json ```` 围栏里、前后还带解释文字,怎么稳定抠出 JSON?\n4. 手写正则解析 LLM 输出很脆,有没有「强类型」的办法?(提示:Ch14 的 Pydantic)\n5. 复杂数学题,怎么让模型别瞎猜答案?(CoT——让它先写推理过程)\n\n---\n\n## §29.1 为什么 Prompt 是工程 🟡\n\nLLM 的输出质量,**强依赖你怎么问**。同样一个模型:\n- 差的问法:`\"分析这个评论\"` → 模型返回一段散文,你想程序化处理很难。\n- 好的问法:`\"输出 JSON:{\"sentiment\": \"正面/负面/中性\", \"score\": 1-5}\"` → 直接能解析。\n\nPrompt 工程就是**用可复制的套路,稳定地把模型输出变成你能用的东西**。本教材的 5 个作业就是 5 个最常用的套路。\n\n> 🟡 **Java 对比**:像 SQL——同一个数据库,写好 SQL 才出对的结果。Prompt 是「给 LLM 的 SQL」。\n\n---\n\n## §29.2 模板填充:fill_template(对应)🟢\n\nPrompt 里常有可变部分(用户输入、上下文),用模板填充。Python 的 `str.format_map`:\n\n```python\ndef fill_template(template: str, **kwargs) -> str:\n    class _Safe(dict):\n        def __missing__(self, k): return \"\"\n    return template.format_map(_Safe(kwargs))\n```\n\n- `template.format_map(dict)`:用 dict 的键填 `{占位符}`。= Java `MessageFormat` / `String.format`。\n- **为什么用 `_Safe`**:普通 `format` 遇到**没给的占位符会抛 `KeyError`**。Prompt 模板里常有可选字段,用 `_Safe.__missing__` 让缺失键返回 `\"\"`,稳健。\n\n> ✅ 做 `fill_template`:`format_map(_Safe(kwargs))`,`_Safe.__missing__` 返回 `\"\"`。\n\n---\n\n## §29.3 few-shot:build_few_shot_prompt(对应)🟡\n\n模型「照葫芦画瓢」能力极强——给它几个**输入→输出**示例,它就懂你要的格式/风格了。这叫 **few-shot**(对比 zero-shot 不给示例)。\n\n```python\ndef build_few_shot_prompt(examples, query):\n    parts = []\n    for inp, out in examples:\n        parts.append(f\"输入:{inp}\\n输出:{out}\")\n    parts.append(f\"输入:{query}\\n输出:\")    # 留「输出:」让模型接\n    return \"\\n\\n\".join(parts)\n```\n\n- 每个示例「输入:X\\n输出:Y」对齐格式,模型学会映射规则。\n- 结尾留 `输入:{query}\\n输出:` **不写答案**——模型看到「输出:」就自动接着写(完形填空效应)。\n\n> 🟡 few-shot 示例数量:1-3 个通常够;太多费 token 且可能过拟合示例风格。\n\n> ✅ 做 `build_few_shot_prompt`:拼各示例的「输入/输出」对 + 结尾 `输入:{query}\\n输出:`。\n\n---\n\n## §29.4 容错 JSON 提取:parse_json_lenient(对应)🔴\n\n这是 LLM 工程里**最常踩的坑**。你让模型返回 JSON,它经常给你:\n```\n好的,这是分析结果:\n```json\n{\"sentiment\": \"正面\", \"score\": 5}\n```\n希望对你有帮助!\n```\n\n前后有解释文字、还包了 ```` ```json ```` 围栏。直接 `json.loads` 会失败。所以要**容错提取**:\n\n```python\ndef parse_json_lenient(text):\n    m = re.search(r\"```(?:json)?\\s*(\\{.*?\\})\\s*```\", text, re.S)  # 先试围栏\n    if m:\n        return json.loads(m.group(1))\n    m = re.search(r\"\\{.*\\}\", text, re.S)                           # 再试裸 {...}\n    return json.loads(m.group(0) if m else text)\n```\n\n- 先找 ```` ```json {...} ```` 围栏 → 取里面的 JSON。\n- 没围栏就找第一个 `{...}`(贪婪到最后的 `}`)。\n- `re.S`(`.` 匹配换行)让正则跨行匹配多行 JSON。\n- **更稳的办法**:用 SDK 的「结构化输出/工具调用」强制模型返回合法 JSON(§29.5 + Ch32),从源头消除噪声。`parse_json_lenient` 是兜底。\n\n> ✅ 做 `parse_json_lenient`:先正则匹配 ```` ```json ```` 围栏,再匹配 `{...}`,`json.loads`。\n\n---\n\n## §29.5 Pydantic 结构化:parse_structured(对应)🟡\n\n把抠出来的 JSON dict 变成**强类型对象**(Ch14 Pydantic),后续代码就有类型提示和自动校验,不用 `data[\"score\"]` 到处写字符串键:\n\n```python\ndef parse_structured(json_str, model_cls):\n    data = parse_json_lenient(json_str)\n    return model_cls.model_validate(data)\n```\n\n用法:\n```python\nfrom pydantic import BaseModel\nclass Review(BaseModel):\n    sentiment: str\n    score: int\n\nr = parse_structured('```json\\n{\"sentiment\":\"正面\",\"score\":5}\\n```', Review)\nr.score        # 5,且 IDE 有类型提示\n# 类型不对会抛 ValidationError:\nparse_structured('{\"score\":\"不是数字\"}', Review)   # 抛错(score 要 int)\n```\n\n- `model_validate(data)`:Pydantic v2 的方法,把 dict 转成模型实例,**自动类型校验**(score 给字符串就抛 `ValidationError`)。\n- 这比手写正则 / 手动取键**强太多**:类型安全 + 缺字段报错 + IDE 补全。\n\n> 🟡 **Java 对比**:= Jackson `objectMapper.readValue(json, Review.class)`,带校验。Pydantic 是 Python 版的强类型反序列化。\n\n> ✅ 做 `parse_structured`:`parse_json_lenient` 取 dict → `model_cls.model_validate(data)`。\n\n---\n\n## §29.6 CoT:build_cot_prompt(对应)🟢\n\n复杂推理题(数学、逻辑),直接问模型可能瞎猜。**Chain-of-Thought (CoT)**:要求模型**先把推理过程写出来**,再给答案。推理步骤会让答案准确率大幅提升。\n\n```python\ndef build_cot_prompt(question):\n    return (\n        f\"请【一步步思考】后回答下面的问题:\\n\\n{question}\\n\\n\"\n        f\"先用 <推理> 标签列出推理步骤,再用 <答案> 标签给出最终答案。\"\n    )\n```\n\n- 关键短语:「一步步思考」「Let's think step by step」——这句神奇地提升准确率(论文验证过)。\n- 用 `<推理>` `<答案>` 标签结构化输出,方便你程序化抽取答案部分。\n\n> 🔴 **新版模型**:Claude/GPT-4 有「extended thinking」内置 CoT,不用手写 prompt 也能推理。但理解 CoT 原理仍有用(老模型 / 控制成本时)。\n\n> ✅ 做 `build_cot_prompt`:返回含「一步步思考」+ 问题 + 要求「先推理再答案」的模板。\n\n---\n\n## §29.7 真实组合示例(讲透)\n\n```python\nfrom pydantic import BaseModel\n\nclass Review(BaseModel):\n    sentiment: str\n    pros: list[str]\n    cons: list[str]\n    score: int\n\n# 1. few-shot + 结构化要求 组合 prompt\nprompt = build_few_shot_prompt(\n    examples=[(\"手机很好用\", '{\"sentiment\":\"正面\",\"pros\":[\"流畅\",\"续航\"],\"cons\":[],\"score\":5}')],\n    query=用户评论,\n) + '\\n请严格输出上述格式的 JSON。'\n\n# 2. 调模型(Ch28)\ntext = call_llm(client, \"你是评论分析助手\", prompt)\n\n# 3. 容错解析成强类型对象\nreview = parse_structured(text, Review)\nprint(review.sentiment, review.score)\n```\n\n模板 → few-shot → 调用 → 容错解析 → 强类型对象。这条链就是生产级 LLM 应用的标准管道。\n\n---\n\n## §29.8 Java 老手常踩的坑 ⚠️\n\n1. **手写正则解析 LLM 输出**:脆、易碎。用 Pydantic 结构化(`model_validate`)或工具调用。\n2. **直接 `json.loads` LLM 文本**:模型常带围栏/前后文,必崩。用 `parse_json_lenient` 兜底,或更好的——强制结构化输出。\n3. **不给示例就想要特定格式**:zero-shot 格式不稳。关键格式给 few-shot。\n4. **占位符没给值就崩**:用 `_Safe` 容错的 `format_map`,别让一个可选字段炸掉整个 prompt。\n5. **复杂题不让模型推理**:CoT 提升准确率,别让模型直接猜答案。\n6. **Prompt 写死在代码里散落**:集中管理(模板常量 / 文件),别到处拼字符串。\n\n---\n\n## 📝 本章作业\n\n| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `fill_template` | format_map + 容错 | 🟢 |\n| `build_few_shot_prompt` | few-shot 组装 | 🟡 |\n| `parse_json_lenient` | 容错 JSON 提取 | 🔴 |\n| `parse_structured` | Pydantic 结构化 | 🟡 |\n| `build_cot_prompt` | CoT 模板 | 🟢 |\n\n```bash\nuv run pytest 05_ai_framework/ch29/test_ch29_assignment.py -v\n```\n\n全绿 = 掌握 Ch29。\n\n---\n\n## ✅ 自测\n\n- [ ] 会用 `format_map` + `_Safe` 做容错模板填充\n- [ ] 懂 few-shot 原理,能组装 few-shot prompt\n- [ ] 能从带围栏/噪声的文本里容错抠 JSON\n- [ ] 会用 Pydantic 把 JSON 变成校验过的强类型对象\n- [ ] 知道 CoT 为什么提升准确率\n- [ ] 5 个作业全绿\n\n## 🎓 费曼挑战\n\n1. 「为什么直接 `json.loads` LLM 的输出会崩?怎么兜底?更好的办法是什么?」— 重读 §29.4/§29.5\n2. 「few-shot 和 zero-shot 区别?为什么给示例格式更稳?」— 重读 §29.3\n3. 「CoT 那句『一步步思考』为什么有用?」— 重读 §29.6\n\n## 🧠 记忆闪卡 → [`review.md`](./review.md)\n\n---\n\n## ⏭️ 下一步:Ch30 LangChain 基础\n\nPrompt 和解析会了,但每次手拼「prompt → 调用 → 解析」很重复。LangChain 用 **LCEL**(`prompt | model | parser`)把这条链声明式拼起来,像 Unix 管道。\n",
+  "assignment": "\"\"\"\nCh29 作业:Prompt 工程与结构化输出。\n\n会调 LLM 了(Ch28),这章学「怎么问」+「怎么让它稳定返回结构化数据」。\n核心:Prompt 模板填充、few-shot 示例、CoT;以及把 LLM 吐出的(可能带噪声的)\n文本解析成【强类型 Pydantic 对象】,告别手写正则。\n\n5 个函数,纯字符串 + pydantic,不调真实 LLM。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch29/test_ch29_assignment.py -v\n\n全绿 = 你掌握了 Ch29。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport json\nimport re\n\n\n# ========== §29.2 模板填充:fill_template ==========\n\n\ndef fill_template(template: str, **kwargs) -> str:\n    \"\"\"\n    【模板 · §29.2】用 kwargs 填充 {占位符};缺失的占位符填空串(不报错)。\n\n    示例:\n        fill_template(\"你好 {name},你是 {role}\", name=\"小明\", role=\"学生\")\n            -> \"你好 小明,你是 学生\"\n        fill_template(\"只有 {name}\", name=\"A\")   -> \"只有 A\"\n        fill_template(\"缺失 {nope}\")            -> \"缺失 \"   # 不抛 KeyError\n\n    思路(format_map + 容错 dict;对比 Java MessageFormat):\n        class _Safe(dict):\n            def __missing__(self, k): return \"\"\n        return template.format_map(_Safe(kwargs))\n    \"\"\"\n    # TODO: format_map + __missing__ 返回 \"\" 的容错 dict\n    ...\n\n\n# ========== §29.3 few-shot:build_few_shot_prompt ==========\n\n\ndef build_few_shot_prompt(examples: list[tuple[str, str]], query: str) -> str:\n    \"\"\"\n    【few-shot · §29.3】用 (输入, 输出) 示例 + 新 query 组装 few-shot prompt。\n    让模型「照葫芦画瓢」。结尾留「输出:」让模型接。\n\n    示例:\n        build_few_shot_prompt([(\"苹果\",\"水果\"),(\"牛肉\",\"肉类\")], \"胡萝卜\")\n            -> \"输入:苹果\\\\n输出:水果\\\\n\\\\n输入:牛肉\\\\n输出:肉类\\\\n\\\\n输入:胡萝卜\\\\n输出:\"\n\n    思路:\n        parts = []\n        for inp, out in examples:\n            parts.append(f\"输入:{inp}\\\\n输出:{out}\")\n        parts.append(f\"输入:{query}\\\\n输出:\")\n        return \"\\\\n\\\\n\".join(parts)\n    \"\"\"\n    # TODO: 拼示例 + 结尾 query 的「输入:..\\\\n输出:」\n    ...\n\n\n# ========== §29.4 容错 JSON 提取:parse_json_lenient ==========\n\n\ndef parse_json_lenient(text: str) -> dict:\n    \"\"\"\n    【容错 · §29.4】LLM 返回的文本常带噪声(前后解释文字、```json 围栏),从中抠出 JSON 解析。\n    优先 ```json ... ``` 围栏;其次第一个 {...};都没有就 json.loads 整段(可能抛)。\n\n    示例:\n        parse_json_lenient('{\"a\": 1}')                  -> {\"a\": 1}\n        parse_json_lenient('结果是:\\\\n```json\\\\n{\"x\": 2}\\\\n```')  -> {\"x\": 2}\n        parse_json_lenient('前面 {\"b\": 3} 后面')         -> {\"b\": 3}\n\n    思路(正则 + json.loads;对比手写正则 vs 结构化输出,见 §29.6):\n        m = re.search(r\"```(?:json)?\\\\s*(\\\\{.*?\\\\})\\\\s*```\", text, re.S)\n        if m: return json.loads(m.group(1))\n        m = re.search(r\"\\\\{.*\\\\}\", text, re.S)\n        return json.loads(m.group(0) if m else text)\n    \"\"\"\n    # TODO: 先试 ```json 围栏,再试 {...},json.loads\n    ...\n\n\n# ========== §29.5 Pydantic 结构化:parse_structured ==========\n\n\ndef parse_structured(json_str: str, model_cls):\n    \"\"\"\n    【结构化 · §29.5】把(带噪声的)JSON 文本解析成 Pydantic 模型实例,类型自动校验。\n    model_cls 是 BaseModel 子类。解析或校验失败抛异常。\n\n    示例:\n        class Review(BaseModel): sentiment: str; score: int\n        parse_structured('{\"sentiment\":\"正面\",\"score\":5}', Review)\n            -> Review(sentiment=\"正面\", score=5)\n        parse_structured('{\"score\":\"不是数字\"}', Review)   # 抛 ValidationError\n\n    思路(Ch14 学过 Pydantic;先 parse_json_lenient 再 model_validate):\n        data = parse_json_lenient(json_str)\n        return model_cls.model_validate(data)\n    \"\"\"\n    # TODO: parse_json_lenient 取 dict,再 model_cls.model_validate(data)\n    ...\n\n\n# ========== §29.6 CoT:build_cot_prompt ==========\n\n\ndef build_cot_prompt(question: str) -> str:\n    \"\"\"\n    【CoT · §29.6】组装「思维链」prompt——要求模型先列推理步骤再给答案,提升复杂题准确率。\n\n    示例:\n        build_cot_prompt(\"小明有 3 个苹果...\") -> 含 \"一步步\" 和原问题 + 要求列步骤\n\n    思路(固定模板 + 占位):\n        return (f\"请【一步步思考】后回答下面的问题:\\\\n\\\\n{question}\\\\n\\\\n\"\n                f\"先用 <推理> 标签列出推理步骤,再用 <答案> 标签给出最终答案。\")\n    \"\"\"\n    # TODO: 返回含「一步步思考」+ 问题 + 要求列步骤的 prompt\n    ...\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(fill_template(\"你好 {name},你是 {role}\", name=\"小明\", role=\"学生\"))\n    print(build_few_shot_prompt([(\"苹果\", \"水果\")], \"胡萝卜\"))\n    print(parse_json_lenient('结果是:\\n```json\\n{\"x\": 2}\\n```'))\n",
+  "testName": "ch29_assignment",
+  "testSource": "\"\"\"\nCh29 作业测试。运行: uv run pytest 05_ai_framework/ch29/test_ch29_assignment.py -v\n\"\"\"\nimport pytest\nfrom pydantic import BaseModel, ValidationError\n\nfrom ch29_assignment import (\n    build_cot_prompt,\n    build_few_shot_prompt,\n    fill_template,\n    parse_json_lenient,\n    parse_structured,\n)\n\n\nclass Review(BaseModel):\n    sentiment: str\n    score: int\n\n\n# ---------- fill_template ----------\nclass TestFillTemplate:\n    def test_basic(self):\n        assert fill_template(\"你好 {name},你是 {role}\", name=\"小明\", role=\"学生\") == \"你好 小明,你是 学生\"\n\n    def test_single(self):\n        assert fill_template(\"只有 {name}\", name=\"A\") == \"只有 A\"\n\n    def test_missing_key_is_empty(self):\n        assert fill_template(\"缺失 {nope}\") == \"缺失 \"\n\n    def test_mixed(self):\n        assert fill_template(\"{a}-{b}-{c}\", a=\"1\", b=\"2\") == \"1-2-\"\n\n    def test_no_placeholders(self):\n        assert fill_template(\"没有占位符\") == \"没有占位符\"\n\n\n# ---------- build_few_shot_prompt ----------\nclass TestFewShot:\n    def test_basic(self):\n        result = build_few_shot_prompt([(\"苹果\", \"水果\"), (\"牛肉\", \"肉类\")], \"胡萝卜\")\n        assert \"输入:苹果\\n输出:水果\" in result\n        assert \"输入:牛肉\\n输出:肉类\" in result\n        assert result.endswith(\"输入:胡萝卜\\n输出:\")\n\n    def test_single_example(self):\n        result = build_few_shot_prompt([(\"苹果\", \"水果\")], \"香蕉\")\n        assert \"输入:苹果\\n输出:水果\" in result\n        assert result.endswith(\"输入:香蕉\\n输出:\")\n\n    def test_empty_examples(self):\n        result = build_few_shot_prompt([], \"香蕉\")\n        assert result == \"输入:香蕉\\n输出:\"\n\n    def test_examples_separated_by_blank_line(self):\n        result = build_few_shot_prompt([(\"a\", \"1\"), (\"b\", \"2\")], \"c\")\n        assert \"\\n\\n输入:b\" in result\n\n\n# ---------- parse_json_lenient ----------\nclass TestParseJsonLenient:\n    def test_plain_json(self):\n        assert parse_json_lenient('{\"a\": 1}') == {\"a\": 1}\n\n    def test_fenced_json(self):\n        text = '结果如下:\\n```json\\n{\"x\": 2, \"y\": 3}\\n```\\n完'\n        assert parse_json_lenient(text) == {\"x\": 2, \"y\": 3}\n\n    def test_fenced_without_lang(self):\n        assert parse_json_lenient(\"```\\n{\\\"k\\\": 9}\\n```\") == {\"k\": 9}\n\n    def test_json_with_surrounding_text(self):\n        assert parse_json_lenient('前面文字 {\"b\": 3} 后面文字') == {\"b\": 3}\n\n    def test_nested(self):\n        assert parse_json_lenient('{\"a\": {\"b\": 1}}') == {\"a\": {\"b\": 1}}\n\n    def test_invalid_raises(self):\n        with pytest.raises(Exception):\n            parse_json_lenient(\"完全不是 json 的文字\")\n\n\n# ---------- parse_structured ----------\nclass TestParseStructured:\n    def test_basic(self):\n        r = parse_structured('{\"sentiment\":\"正面\",\"score\":5}', Review)\n        assert isinstance(r, Review)\n        assert r.sentiment == \"正面\"\n        assert r.score == 5\n\n    def test_from_fenced(self):\n        r = parse_structured('```json\\n{\"sentiment\":\"负面\",\"score\":2}\\n```', Review)\n        assert r.sentiment == \"负面\"\n\n    def test_from_noisy_text(self):\n        r = parse_structured('分析结果 {\"sentiment\":\"中性\",\"score\":3} 以上', Review)\n        assert r.score == 3\n\n    def test_wrong_type_raises(self):\n        with pytest.raises(ValidationError):\n            parse_structured('{\"sentiment\":\"正面\",\"score\":\"不是数字\"}', Review)\n\n    def test_missing_field_raises(self):\n        with pytest.raises(ValidationError):\n            parse_structured('{\"sentiment\":\"正面\"}', Review)  # 缺 score\n\n\n# ---------- build_cot_prompt ----------\nclass TestCotPrompt:\n    def test_contains_question(self):\n        p = build_cot_prompt(\"小明有几个苹果?\")\n        assert \"小明有几个苹果?\" in p\n\n    def test_asks_for_step_by_step(self):\n        p = build_cot_prompt(\"x\")\n        assert \"一步步\" in p or \"逐步\" in p\n\n    def test_asks_for_reasoning(self):\n        p = build_cot_prompt(\"x\")\n        assert \"推理\" in p or \"步骤\" in p\n",
+  "reviewMd": "# Ch29 · 记忆闪卡 & 复习\n\n> Ultralearning 原则七·记忆留存。**先回忆,再翻答案**。连续 2 次秒答 → 退役 ✅。\n\n## 🔖 闪卡\n\n| # | 正面(问题) | 背面(答案) | 掌握 |\n|---|---|---|---|\n| 1 | fill_template 怎么容错(缺失占位符不报错)? | format_map(_Safe(kwargs)),_Safe 是 dict 子类,__missing__ 返回 \"\"。普通 format 遇缺失键抛 KeyError | ⬜ |\n| 2 | few-shot 是什么?结尾为什么留「输出:」不写答案? | 给模型几个 输入→输出 示例让它照做。结尾留「输出:」利用【完形填空】效应,模型自动接着写 | ⬜ |\n| 3 | 为什么不能直接 json.loads LLM 输出? | 模型常带 ```json 围栏、前后解释文字 → json.loads 必崩。用 parse_json_lenient 兜底(先围栏再 {...}) | ⬜ |\n| 4 | parse_structured 怎么把 JSON 变强类型? | parse_json_lenient 取 dict → model_cls.model_validate(data)。= Jackson readValue,带类型校验,类型不符抛 ValidationError | ⬜ |\n| 5 | 比手写正则解析 LLM 输出更好的办法? | 结构化输出:Pydantic model_validate(强类型校验)或工具调用(从源头强制合法 JSON)。正则只做兜底 | ⬜ |\n| 6 | CoT 是什么?关键短语? | Chain-of-Thought:要求模型【先写推理再给答案】,提升复杂题准确率。关键短语「一步步思考」/「Let's think step by step」 | ⬜ |\n| 7 | 生产级 LLM 应用的标准管道? | 模板填充 → few-shot → 调用(call_llm)→ 容错解析(parse_json_lenient)→ 强类型对象(parse_structured) | ⬜ |\n| 8 | Prompt 工程为什么算「工程」? | 同模型不同问法质量差很多。Prompt 是【给 LLM 的 SQL】——用可复制套路稳定把输出变成可用的东西 | ⬜ |\n\n## 🎓 费曼自检\n\n- [ ] 能说清「json.loads LLM 输出会崩 + 兜底 + 更好的结构化办法」?\n- [ ] 能说清「few-shot 完形填空 + CoT 提升准确率」?\n- [ ] 能说清「Pydantic model_validate 强类型解析 vs 手写正则」?\n\n## 📅 复习日程\n\n- [ ] +1 天　日期:________\n- [ ] +3 天　日期:________\n- [ ] +7 天　日期:________\n\n> 到期登记到根 [`REVIEW.md`](../../REVIEW.md)。\n",
+  "interleaved": false,
+  "sections": [
+    {
+      "id": "intro",
+      "heading": "",
+      "secNum": null,
+      "body": "> **预计**:0.5 天 ｜ **前置**:Ch28、Ch14(Pydantic)｜ **M5 第 2 章**\n> **目标**:① 学会让模型更好作答的 Prompt 套路(模板、few-shot、CoT);② 让模型**稳定返回结构化数据**——用 Pydantic 把 LLM 吐出的(带噪声的)文本变成强类型对象,告别手写正则。\n\n> 📐 **本教程的契约**:§29.2–§29.6 对应作业 5 个函数。纯字符串 + Pydantic,不调真实 LLM。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章地图",
+      "heading": "🗺️ 本章地图",
+      "secNum": null,
+      "body": "| 作业 | 对应小节 | 核心知识点 |\n|------|----------|-----------|\n| `fill_template` | §29.2 | str.format_map + 容错(缺失占位符不报错) |\n| `build_few_shot_prompt` | §29.3 | few-shot:给示例让模型照做 |\n| `parse_json_lenient` | §29.4 | 从带噪声文本抠 JSON(围栏/前后文) |\n| `parse_structured` | §29.5 | JSON → Pydantic 模型(类型校验) |\n| `build_cot_prompt` | §29.6 | CoT:要求先推理再答 |\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-学习路径-费曼五步-约-50-分钟",
+      "heading": "⏱️ 学习路径:费曼五步(约 50 分钟)",
+      "secNum": null,
+      "body": "① 预览猜 → ② 写 assignment → ③ pytest 红绿 → ④ 费曼 → ⑤ 存闪卡。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-预览猜",
+      "heading": "① 预览猜",
+      "secNum": null,
+      "body": "1. 同一个 LLM,为什么换个问法答案质量差很多?「Prompt 工程」是玄学还是工程?\n2. Java 里 `String.format(\"Hi %s\", name)`,Python 怎么填模板?如果占位符没给值,Python 会怎样?\n3. 模型有时把 JSON 包在 ```` ```json ```` 围栏里、前后还带解释文字,怎么稳定抠出 JSON?\n4. 手写正则解析 LLM 输出很脆,有没有「强类型」的办法?(提示:Ch14 的 Pydantic)\n5. 复杂数学题,怎么让模型别瞎猜答案?(CoT——让它先写推理过程)\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-29.1",
+      "heading": "§29.1 为什么 Prompt 是工程 🟡",
+      "secNum": "29.1",
+      "body": "LLM 的输出质量,**强依赖你怎么问**。同样一个模型:\n- 差的问法:`\"分析这个评论\"` → 模型返回一段散文,你想程序化处理很难。\n- 好的问法:`\"输出 JSON:{\"sentiment\": \"正面/负面/中性\", \"score\": 1-5}\"` → 直接能解析。\n\nPrompt 工程就是**用可复制的套路,稳定地把模型输出变成你能用的东西**。本教材的 5 个作业就是 5 个最常用的套路。\n\n> 🟡 **Java 对比**:像 SQL——同一个数据库,写好 SQL 才出对的结果。Prompt 是「给 LLM 的 SQL」。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-29.2",
+      "heading": "§29.2 模板填充:fill_template(对应)🟢",
+      "secNum": "29.2",
+      "body": "Prompt 里常有可变部分(用户输入、上下文),用模板填充。Python 的 `str.format_map`:\n\n```python\ndef fill_template(template: str, **kwargs) -> str:\n    class _Safe(dict):\n        def __missing__(self, k): return \"\"\n    return template.format_map(_Safe(kwargs))\n```\n\n- `template.format_map(dict)`:用 dict 的键填 `{占位符}`。= Java `MessageFormat` / `String.format`。\n- **为什么用 `_Safe`**:普通 `format` 遇到**没给的占位符会抛 `KeyError`**。Prompt 模板里常有可选字段,用 `_Safe.__missing__` 让缺失键返回 `\"\"`,稳健。\n\n> ✅ 做 `fill_template`:`format_map(_Safe(kwargs))`,`_Safe.__missing__` 返回 `\"\"`。\n\n---",
+      "exerciseFunctions": [
+        "fill_template"
+      ]
+    },
+    {
+      "id": "sec-29.3",
+      "heading": "§29.3 few-shot:build_few_shot_prompt(对应)🟡",
+      "secNum": "29.3",
+      "body": "模型「照葫芦画瓢」能力极强——给它几个**输入→输出**示例,它就懂你要的格式/风格了。这叫 **few-shot**(对比 zero-shot 不给示例)。\n\n```python\ndef build_few_shot_prompt(examples, query):\n    parts = []\n    for inp, out in examples:\n        parts.append(f\"输入:{inp}\\n输出:{out}\")\n    parts.append(f\"输入:{query}\\n输出:\")    # 留「输出:」让模型接\n    return \"\\n\\n\".join(parts)\n```\n\n- 每个示例「输入:X\\n输出:Y」对齐格式,模型学会映射规则。\n- 结尾留 `输入:{query}\\n输出:` **不写答案**——模型看到「输出:」就自动接着写(完形填空效应)。\n\n> 🟡 few-shot 示例数量:1-3 个通常够;太多费 token 且可能过拟合示例风格。\n\n> ✅ 做 `build_few_shot_prompt`:拼各示例的「输入/输出」对 + 结尾 `输入:{query}\\n输出:`。\n\n---",
+      "exerciseFunctions": [
+        "build_few_shot_prompt"
+      ]
+    },
+    {
+      "id": "sec-29.4",
+      "heading": "§29.4 容错 JSON 提取:parse_json_lenient(对应)🔴",
+      "secNum": "29.4",
+      "body": "这是 LLM 工程里**最常踩的坑**。你让模型返回 JSON,它经常给你:\n```\n好的,这是分析结果:\n```json\n{\"sentiment\": \"正面\", \"score\": 5}\n```\n希望对你有帮助!\n```\n\n前后有解释文字、还包了 ```` ```json ```` 围栏。直接 `json.loads` 会失败。所以要**容错提取**:\n\n```python\ndef parse_json_lenient(text):\n    m = re.search(r\"```(?:json)?\\s*(\\{.*?\\})\\s*```\", text, re.S)  # 先试围栏\n    if m:\n        return json.loads(m.group(1))\n    m = re.search(r\"\\{.*\\}\", text, re.S)                           # 再试裸 {...}\n    return json.loads(m.group(0) if m else text)\n```\n\n- 先找 ```` ```json {...} ```` 围栏 → 取里面的 JSON。\n- 没围栏就找第一个 `{...}`(贪婪到最后的 `}`)。\n- `re.S`(`.` 匹配换行)让正则跨行匹配多行 JSON。\n- **更稳的办法**:用 SDK 的「结构化输出/工具调用」强制模型返回合法 JSON(§29.5 + Ch32),从源头消除噪声。`parse_json_lenient` 是兜底。\n\n> ✅ 做 `parse_json_lenient`:先正则匹配 ```` ```json ```` 围栏,再匹配 `{...}`,`json.loads`。\n\n---",
+      "exerciseFunctions": [
+        "parse_json_lenient"
+      ]
+    },
+    {
+      "id": "sec-29.5",
+      "heading": "§29.5 Pydantic 结构化:parse_structured(对应)🟡",
+      "secNum": "29.5",
+      "body": "把抠出来的 JSON dict 变成**强类型对象**(Ch14 Pydantic),后续代码就有类型提示和自动校验,不用 `data[\"score\"]` 到处写字符串键:\n\n```python\ndef parse_structured(json_str, model_cls):\n    data = parse_json_lenient(json_str)\n    return model_cls.model_validate(data)\n```\n\n用法:\n```python\nfrom pydantic import BaseModel\nclass Review(BaseModel):\n    sentiment: str\n    score: int\n\nr = parse_structured('```json\\n{\"sentiment\":\"正面\",\"score\":5}\\n```', Review)\nr.score        # 5,且 IDE 有类型提示\n# 类型不对会抛 ValidationError:\nparse_structured('{\"score\":\"不是数字\"}', Review)   # 抛错(score 要 int)\n```\n\n- `model_validate(data)`:Pydantic v2 的方法,把 dict 转成模型实例,**自动类型校验**(score 给字符串就抛 `ValidationError`)。\n- 这比手写正则 / 手动取键**强太多**:类型安全 + 缺字段报错 + IDE 补全。\n\n> 🟡 **Java 对比**:= Jackson `objectMapper.readValue(json, Review.class)`,带校验。Pydantic 是 Python 版的强类型反序列化。\n\n> ✅ 做 `parse_structured`:`parse_json_lenient` 取 dict → `model_cls.model_validate(data)`。\n\n---",
+      "exerciseFunctions": [
+        "parse_structured"
+      ]
+    },
+    {
+      "id": "sec-29.6",
+      "heading": "§29.6 CoT:build_cot_prompt(对应)🟢",
+      "secNum": "29.6",
+      "body": "复杂推理题(数学、逻辑),直接问模型可能瞎猜。**Chain-of-Thought (CoT)**:要求模型**先把推理过程写出来**,再给答案。推理步骤会让答案准确率大幅提升。\n\n```python\ndef build_cot_prompt(question):\n    return (\n        f\"请【一步步思考】后回答下面的问题:\\n\\n{question}\\n\\n\"\n        f\"先用 <推理> 标签列出推理步骤,再用 <答案> 标签给出最终答案。\"\n    )\n```\n\n- 关键短语:「一步步思考」「Let's think step by step」——这句神奇地提升准确率(论文验证过)。\n- 用 `<推理>` `<答案>` 标签结构化输出,方便你程序化抽取答案部分。\n\n> 🔴 **新版模型**:Claude/GPT-4 有「extended thinking」内置 CoT,不用手写 prompt 也能推理。但理解 CoT 原理仍有用(老模型 / 控制成本时)。\n\n> ✅ 做 `build_cot_prompt`:返回含「一步步思考」+ 问题 + 要求「先推理再答案」的模板。\n\n---",
+      "exerciseFunctions": [
+        "build_cot_prompt"
+      ]
+    },
+    {
+      "id": "sec-29.7",
+      "heading": "§29.7 真实组合示例(讲透)",
+      "secNum": "29.7",
+      "body": "```python\nfrom pydantic import BaseModel\n\nclass Review(BaseModel):\n    sentiment: str\n    pros: list[str]\n    cons: list[str]\n    score: int\n\n# 1. few-shot + 结构化要求 组合 prompt\nprompt = build_few_shot_prompt(\n    examples=[(\"手机很好用\", '{\"sentiment\":\"正面\",\"pros\":[\"流畅\",\"续航\"],\"cons\":[],\"score\":5}')],\n    query=用户评论,\n) + '\\n请严格输出上述格式的 JSON。'\n\n# 2. 调模型(Ch28)\ntext = call_llm(client, \"你是评论分析助手\", prompt)\n\n# 3. 容错解析成强类型对象\nreview = parse_structured(text, Review)\nprint(review.sentiment, review.score)\n```\n\n模板 → few-shot → 调用 → 容错解析 → 强类型对象。这条链就是生产级 LLM 应用的标准管道。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-29.8",
+      "heading": "§29.8 Java 老手常踩的坑 ⚠️",
+      "secNum": "29.8",
+      "body": "1. **手写正则解析 LLM 输出**:脆、易碎。用 Pydantic 结构化(`model_validate`)或工具调用。\n2. **直接 `json.loads` LLM 文本**:模型常带围栏/前后文,必崩。用 `parse_json_lenient` 兜底,或更好的——强制结构化输出。\n3. **不给示例就想要特定格式**:zero-shot 格式不稳。关键格式给 few-shot。\n4. **占位符没给值就崩**:用 `_Safe` 容错的 `format_map`,别让一个可选字段炸掉整个 prompt。\n5. **复杂题不让模型推理**:CoT 提升准确率,别让模型直接猜答案。\n6. **Prompt 写死在代码里散落**:集中管理(模板常量 / 文件),别到处拼字符串。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-本章作业",
+      "heading": "📝 本章作业",
+      "secNum": null,
+      "body": "| 任务 | 知识点 | 难度 |\n|------|--------|------|\n| `fill_template` | format_map + 容错 | 🟢 |\n| `build_few_shot_prompt` | few-shot 组装 | 🟡 |\n| `parse_json_lenient` | 容错 JSON 提取 | 🔴 |\n| `parse_structured` | Pydantic 结构化 | 🟡 |\n| `build_cot_prompt` | CoT 模板 | 🟢 |\n\n```bash\nuv run pytest 05_ai_framework/ch29/test_ch29_assignment.py -v\n```\n\n全绿 = 掌握 Ch29。\n\n---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-自测",
+      "heading": "✅ 自测",
+      "secNum": null,
+      "body": "- [ ] 会用 `format_map` + `_Safe` 做容错模板填充\n- [ ] 懂 few-shot 原理,能组装 few-shot prompt\n- [ ] 能从带围栏/噪声的文本里容错抠 JSON\n- [ ] 会用 Pydantic 把 JSON 变成校验过的强类型对象\n- [ ] 知道 CoT 为什么提升准确率\n- [ ] 5 个作业全绿",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-费曼挑战",
+      "heading": "🎓 费曼挑战",
+      "secNum": null,
+      "body": "1. 「为什么直接 `json.loads` LLM 的输出会崩?怎么兜底?更好的办法是什么?」— 重读 §29.4/§29.5\n2. 「few-shot 和 zero-shot 区别?为什么给示例格式更稳?」— 重读 §29.3\n3. 「CoT 那句『一步步思考』为什么有用?」— 重读 §29.6",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-记忆闪卡-review-md-review-md",
+      "heading": "🧠 记忆闪卡 → [`review.md`](./review.md)",
+      "secNum": null,
+      "body": "---",
+      "exerciseFunctions": []
+    },
+    {
+      "id": "sec-下一步-Ch30-LangChain-基础",
+      "heading": "⏭️ 下一步:Ch30 LangChain 基础",
+      "secNum": null,
+      "body": "Prompt 和解析会了,但每次手拼「prompt → 调用 → 解析」很重复。LangChain 用 **LCEL**(`prompt | model | parser`)把这条链声明式拼起来,像 Unix 管道。",
+      "exerciseFunctions": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "fill_template",
+      "testClass": "TestFillTemplate",
+      "skeleton": "def fill_template(template: str, **kwargs) -> str:\n    \"\"\"\n    【模板 · §29.2】用 kwargs 填充 {占位符};缺失的占位符填空串(不报错)。\n\n    示例:\n        fill_template(\"你好 {name},你是 {role}\", name=\"小明\", role=\"学生\")\n            -> \"你好 小明,你是 学生\"\n        fill_template(\"只有 {name}\", name=\"A\")   -> \"只有 A\"\n        fill_template(\"缺失 {nope}\")            -> \"缺失 \"   # 不抛 KeyError\n\n    思路(format_map + 容错 dict;对比 Java MessageFormat):\n        class _Safe(dict):\n            def __missing__(self, k): return \"\"\n        return template.format_map(_Safe(kwargs))\n    \"\"\"\n    # TODO: format_map + __missing__ 返回 \"\" 的容错 dict\n    ..."
+    },
+    {
+      "name": "build_few_shot_prompt",
+      "testClass": "TestBuildFewShotPrompt",
+      "skeleton": "def build_few_shot_prompt(examples: list[tuple[str, str]], query: str) -> str:\n    \"\"\"\n    【few-shot · §29.3】用 (输入, 输出) 示例 + 新 query 组装 few-shot prompt。\n    让模型「照葫芦画瓢」。结尾留「输出:」让模型接。\n\n    示例:\n        build_few_shot_prompt([(\"苹果\",\"水果\"),(\"牛肉\",\"肉类\")], \"胡萝卜\")\n            -> \"输入:苹果\\\\n输出:水果\\\\n\\\\n输入:牛肉\\\\n输出:肉类\\\\n\\\\n输入:胡萝卜\\\\n输出:\"\n\n    思路:\n        parts = []\n        for inp, out in examples:\n            parts.append(f\"输入:{inp}\\\\n输出:{out}\")\n        parts.append(f\"输入:{query}\\\\n输出:\")\n        return \"\\\\n\\\\n\".join(parts)\n    \"\"\"\n    # TODO: 拼示例 + 结尾 query 的「输入:..\\\\n输出:」\n    ..."
+    },
+    {
+      "name": "parse_json_lenient",
+      "testClass": "TestParseJsonLenient",
+      "skeleton": "def parse_json_lenient(text: str) -> dict:\n    \"\"\"\n    【容错 · §29.4】LLM 返回的文本常带噪声(前后解释文字、```json 围栏),从中抠出 JSON 解析。\n    优先 ```json ... ``` 围栏;其次第一个 {...};都没有就 json.loads 整段(可能抛)。\n\n    示例:\n        parse_json_lenient('{\"a\": 1}')                  -> {\"a\": 1}\n        parse_json_lenient('结果是:\\\\n```json\\\\n{\"x\": 2}\\\\n```')  -> {\"x\": 2}\n        parse_json_lenient('前面 {\"b\": 3} 后面')         -> {\"b\": 3}\n\n    思路(正则 + json.loads;对比手写正则 vs 结构化输出,见 §29.6):\n        m = re.search(r\"```(?:json)?\\\\s*(\\\\{.*?\\\\})\\\\s*```\", text, re.S)\n        if m: return json.loads(m.group(1))\n        m = re.search(r\"\\\\{.*\\\\}\", text, re.S)\n        return json.loads(m.group(0) if m else text)\n    \"\"\"\n    # TODO: 先试 ```json 围栏,再试 {...},json.loads\n    ..."
+    },
+    {
+      "name": "parse_structured",
+      "testClass": "TestParseStructured",
+      "skeleton": "def parse_structured(json_str: str, model_cls):\n    \"\"\"\n    【结构化 · §29.5】把(带噪声的)JSON 文本解析成 Pydantic 模型实例,类型自动校验。\n    model_cls 是 BaseModel 子类。解析或校验失败抛异常。\n\n    示例:\n        class Review(BaseModel): sentiment: str; score: int\n        parse_structured('{\"sentiment\":\"正面\",\"score\":5}', Review)\n            -> Review(sentiment=\"正面\", score=5)\n        parse_structured('{\"score\":\"不是数字\"}', Review)   # 抛 ValidationError\n\n    思路(Ch14 学过 Pydantic;先 parse_json_lenient 再 model_validate):\n        data = parse_json_lenient(json_str)\n        return model_cls.model_validate(data)\n    \"\"\"\n    # TODO: parse_json_lenient 取 dict,再 model_cls.model_validate(data)\n    ..."
+    },
+    {
+      "name": "build_cot_prompt",
+      "testClass": "TestBuildCotPrompt",
+      "skeleton": "def build_cot_prompt(question: str) -> str:\n    \"\"\"\n    【CoT · §29.6】组装「思维链」prompt——要求模型先列推理步骤再给答案,提升复杂题准确率。\n\n    示例:\n        build_cot_prompt(\"小明有 3 个苹果...\") -> 含 \"一步步\" 和原问题 + 要求列步骤\n\n    思路(固定模板 + 占位):\n        return (f\"请【一步步思考】后回答下面的问题:\\\\n\\\\n{question}\\\\n\\\\n\"\n                f\"先用 <推理> 标签列出推理步骤,再用 <答案> 标签给出最终答案。\")\n    \"\"\"\n    # TODO: 返回含「一步步思考」+ 问题 + 要求列步骤的 prompt\n    ..."
+    }
+  ],
+  "preamble": "\"\"\"\nCh29 作业:Prompt 工程与结构化输出。\n\n会调 LLM 了(Ch28),这章学「怎么问」+「怎么让它稳定返回结构化数据」。\n核心:Prompt 模板填充、few-shot 示例、CoT;以及把 LLM 吐出的(可能带噪声的)\n文本解析成【强类型 Pydantic 对象】,告别手写正则。\n\n5 个函数,纯字符串 + pydantic,不调真实 LLM。在每处 TODO 写实现,然后:\n\n    uv run pytest 05_ai_framework/ch29/test_ch29_assignment.py -v\n\n全绿 = 你掌握了 Ch29。\n\n每题顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。\n\"\"\"\nimport json\nimport re\n\n\n# ========== §29.2 模板填充:fill_template ==========\n\n\n# ========== §29.3 few-shot:build_few_shot_prompt ==========\n\n\n# ========== §29.4 容错 JSON 提取:parse_json_lenient ==========\n\n\n# ========== §29.5 Pydantic 结构化:parse_structured ==========\n\n\n# ========== §29.6 CoT:build_cot_prompt ==========\n\n\n# ---------------------------------------------------------------------\nif __name__ == \"__main__\":\n    print(fill_template(\"你好 {name},你是 {role}\", name=\"小明\", role=\"学生\"))\n    print(build_few_shot_prompt([(\"苹果\", \"水果\")], \"胡萝卜\"))\n    print(parse_json_lenient('结果是:\\n```json\\n{\"x\": 2}\\n```'))"
+}
