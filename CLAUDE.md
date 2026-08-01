@@ -8,7 +8,7 @@
 
 面向 15 年 Java 经验开发者的 Python 全栈学习项目,40 章 / 6 模块,逐章「五件套」交付。
 - 大纲:`SYLLABUS.md` ｜ 学习指南:`README.md` ｜ 闪卡索引:`REVIEW.md`
-- 已生成内容:M1(Ch01-07)、M2(Ch08-12)、M3(Ch13-22)、M4(Ch23-27);M5/M6 待生成
+- 已生成内容:M1(Ch01-07)、M2(Ch08-12)、M3(Ch13-22)、M4(Ch23-27)、M5(Ch28-33)、M6(Ch34-40)——**40 章全齐**
 - 五件套约定:`ch{NN}/tutorial.md` + `ch{NN}_assignment.py`(作业,擦成 `...` 交付)+ `test_ch{NN}_assignment.py` + `review.md` + mock 数据
 - 工作流:写完整实现 → pytest 全绿 → 擦成 `...` → 写 tutorial/review。质量标准见 memory(`tutorial-coverage-standard`)。
 - 运行测试:`uv run pytest <path> -v`;各模块依赖:`uv sync --extra web|devops|ai`(extras 互斥,会卸其他组)
@@ -111,7 +111,9 @@ web/                              ← 自包含,可独立成 repo / 上传 GitHu
 ## B.8 实施阶段
 
 - [x] **P0 脚手架**(2026-07-28):Vite+React+TS+Tailwind 深色 shell;首页 6 模块卡片。
-- [x] **P1 内容烘焙**(2026-07-28):`build-curriculum.ts` 摄取源仓库 → `src/content/curriculum.json`;课程页渲染 tutorial.md。已烘焙 M1-M4 共 27 章(M2-M4 available=false,仅 M1 可点)。
+- [x] **P1 内容烘焙**(2026-07-28):`build-curriculum.ts` 摄取源仓库 → `src/content/curriculum.json`;课程页渲染 tutorial.md。已烘焙 M1-M4 共 27 章。
+- [x] **开放 M1–M4**(2026-07-29):M1/M2/M3/M4 `available=true`(首页可点);M3 与多数 M4 章为 Local 只读+本地 uv 命令。
+- [x] **开放 M5–M6**(2026-08-01):五件套已生成并烘焙;M5 全 Local、M6 全 Pyodide;`available=true`。40 章进 web。
 - [x] **P2 编辑器 + Pyodide**(2026-07-28):Monaco 接入;Pyodide 运行 pytest;终端红绿。
 - [x] **交错式 + Dracula 主题**(2026-07-28):课程页改为「讲一节练一节」——教程按 § 切分,每节后嵌该函数的小编辑器 + 单跑该函数测试(`pytest path::TestClass`,其余函数用骨架占位保证 import)。烘焙脚本解析 tutorial 的 §小节 + 对应表 + 函数骨架。解析不到的章(Ch02/Ch05)自动回退「整章教程+末尾作业」。配色全换 Dracula(含 Monaco 自定义主题)。dev 端口 5188。
 - [ ] **P3 打磨**:Local 章节只读页;进度 localStorage;闪卡可交互;Ch01 骨架还原;GitHub Pages 部署。

@@ -1,0 +1,74 @@
+---
+description: Python 全栈学习项目 + Web 交互站的全局记忆（是什么、怎么做、当前进度）
+alwaysApply: true
+---
+
+# python-learning-project
+
+## 这是什么
+
+面向 **15 年 Java 后端** 的 Python 全栈精通项目（约 30 天 / 40 章 / 6 模块）。核心理念：**「测试通过 = 掌握」**，跳过 hello world，对比 Java + 实战 + pytest。
+
+| 模块 | 目录 | 章节 | 状态 |
+|------|------|------|------|
+| M1 语言核心 | `01_python_core/` | Ch01–07 | 五件套已生成 |
+| M2 标准库 | `02_stdlib/` | Ch08–12 | 五件套已生成 |
+| M3 FastAPI ⭐ | `03_web_framework/` | Ch13–22 | 五件套已生成 |
+| M4 运维脚本 | `04_devops_scripts/` | Ch23–27 | 五件套已生成 |
+| M5 AI 框架 ⭐ | `05_ai_framework/` | Ch28–33 | 五件套已生成 |
+| M6 LeetCode | `06_leetcode/` | Ch34–40 | 五件套已生成 |
+
+权威文档：`SYLLABUS.md`（大纲）、`README.md`（学习指南）、`CLAUDE.md`（A=课程 / B=Web 蓝图）、`REVIEW.md`（闪卡索引）。
+
+## 学习者画像
+
+- 熟悉 Spring / 集合 / java.time / OOP / 并发；要 **Java 对比**，不要从零教语法。
+- 教程用 🟢 秒懂 / 🟡 注意差异 / 🔴 Python 特有 跳读标记。
+- 作业主模式：「web 调用 + mock json 解析 + pytest 验证」。
+- 质量铁律（见 tutorial-coverage）：**作业用到的每个知识点 tutorial 必须有专节讲透**；有「作业↔知识点对应表」；不得超纲。
+
+## 课程五件套（源文件，本地 uv 工作流）
+
+```
+ch{NN}/tutorial.md + ch{NN}_assignment.py(... 骨架) + test_ch{NN}_assignment.py + review.md + mock
+```
+
+生成流程：完整实现 → pytest 全绿 → 擦成 `...` → 写 tutorial/review。跑测：`uv run pytest <path> -v`。extras 互斥：`uv sync --extra web|devops|ai`。
+
+## Web 子项目（`web/`，GLM 已搭好脚手架）
+
+**目标**：独立可移植的 React 深色静态站；模块→章节→课程页；Pyodide 章节浏览器内编辑+跑 pytest；Local 章节只读。
+
+| 点 | 约定 |
+|----|------|
+| 技术 | Bun + Vite + React 18 + TS + Tailwind + Monaco + Pyodide CDN；主题 Dracula；dev 端口 **5188** |
+| 可移植 | 烘焙产物 `web/src/content/curriculum.json` **提交 git**；单独 clone `web/` 就能跑 |
+| 内容管线 | `web/scripts/build-curriculum.ts` **只读**源仓库 → 烘焙；**绝不改**课程 `.md/.py` |
+| 布局 | 交错式：按 § 讲一节 → 嵌该函数小编辑器 → `pytest path::TestClass`；解析失败回退「整教程+末尾作业」 |
+| 布局顺序 | 教程 → 作业 → 闪卡（作业不放最前、不藏 Tab） |
+| Pyodide 章 | M1 全、M2 全、Ch23/25/26、M6 全 |
+| Local 章 | M3 全、M5 全、Ch24/27：只读 + 🔒 + `uv run pytest ...` |
+| 内容策略 | web 端可重组/精简/改写，不必照搬 `.md`；**新章(M5/M6)可直接写 web 内容**，不必先五件套；web 跑不了的代码放仓库对应模块目录 |
+
+### Web 当前进度（2026-08-01）
+
+- P0–P2 + 交错式 + Dracula：**已完成**。P3（Local 打磨 / localStorage 进度 / 闪卡交互 / Ch01 骨架还原 / GitHub Pages）：待做。
+- **40 章全烘焙**；**M1–M6 均 `available=true`**。
+- Pyodide：M1/M2、Ch23、M6（多数交错式）；Local：M3 全、M5 全、Ch24–27（只读教程 + `uv run pytest`）。
+- M5 在烘焙脚本里 `FORCE_LOCAL_DIRS` 强制 Local（与 CLAUDE B.2 一致）。
+- 内容靠 `bun run build:content` 从源五件套烘焙；改源后需重跑并提交 `curriculum.json`。
+
+### 关键命令
+
+```bash
+cd web && bun install && bun run dev          # :5188
+bun run build:content                        # 源 → curriculum.json
+bun run build                                # → dist/
+```
+
+## 操作红线
+
+1. 实施 Web 时**只动 `web/`**；烘焙脚本只读源课程。
+2. 不替代本地五件套+uv 工作流；Local 章仍走本地。
+3. 用户未要求时不 commit；不改 git config。
+4. 写教程/作业必须遵守「作业↔知识点对应表 + 不超纲」。

@@ -20,8 +20,8 @@ export default function Home() {
         </p>
         <div className="mt-6 flex flex-wrap gap-6 text-sm">
           <Stat label="模块" value={`${available} / ${modules.length}`} />
-          <Stat label="已就绪章节" value={`${totalChapters}`} />
-          <Stat label="运行方式" value="Pyodide · 浏览器内" />
+          <Stat label="已开放章节" value={`${totalChapters}`} />
+          <Stat label="运行方式" value="Pyodide · 本地" />
         </div>
       </section>
 

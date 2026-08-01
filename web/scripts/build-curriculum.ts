@@ -57,16 +57,20 @@ export interface Curriculum {
 const MODULE_DEFS: Omit<Module, "chapters">[] = [
   { id: "m1", title: "Python 语言核心", subtitle: "思维转换 · 数据结构 · OOP · 类型", dir: "01_python_core", available: true },
   { id: "m2", title: "标准库 & 三方库", subtitle: "collections · itertools · 正则 · json", dir: "02_stdlib", available: true },
-  { id: "m3", title: "Web 框架 FastAPI", subtitle: "API · ORM · 认证 · 部署", dir: "03_web_framework", available: false },
-  { id: "m4", title: "运维脚本", subtitle: "pathlib · subprocess · CLI · 监控", dir: "04_devops_scripts", available: false },
-  { id: "m5", title: "AI 框架", subtitle: "LLM · Prompt · RAG · Agent", dir: "05_ai_framework", available: false },
-  { id: "m6", title: "LeetCode 实战", subtitle: "Pythonic 刷题", dir: "06_leetcode", available: false },
+  { id: "m3", title: "Web 框架 FastAPI", subtitle: "API · ORM · 认证 · 部署", dir: "03_web_framework", available: true },
+  { id: "m4", title: "运维脚本", subtitle: "pathlib · subprocess · CLI · 监控", dir: "04_devops_scripts", available: true },
+  { id: "m5", title: "AI 框架", subtitle: "LLM · Prompt · RAG · Agent", dir: "05_ai_framework", available: true },
+  { id: "m6", title: "LeetCode 实战", subtitle: "Pythonic 刷题", dir: "06_leetcode", available: true },
 ];
+
+/** 整模块强制 Local(设计约定:M5 全章本地跑,即便作业本身可离线测) */
+const FORCE_LOCAL_DIRS = new Set(["05_ai_framework"]);
 
 const LOCAL_IMPORTS = new Set([
   "fastapi", "uvicorn", "httpx", "sqlalchemy", "alembic", "jose", "passlib",
   "pydantic", "psutil", "schedule", "typer", "rich", "anthropic", "openai",
-  "langchain", "chromadb", "sentence_transformers", "multipart", "dotenv",
+  "langchain", "langchain_core", "langchain_community", "chromadb",
+  "sentence_transformers", "multipart", "dotenv",
   "starlette", "requests", "pydantic_settings",
 ]);
 
@@ -223,7 +227,8 @@ function buildModule(def: Omit<Module, "chapters">): Module {
       const reviewMd = safeRead(path.join(chDir, "review.md"));
       if (!tutorial && !assignment) continue;
 
-      const runMode = detectRunMode([assignment, testSource]);
+      let runMode = detectRunMode([assignment, testSource]);
+      if (FORCE_LOCAL_DIRS.has(def.dir)) runMode = "local";
       const { preamble, functions } = parseAssignment(assignment);
       const mapping = parseMappingTable(tutorial);
       const sections = parseSections(tutorial, mapping);
