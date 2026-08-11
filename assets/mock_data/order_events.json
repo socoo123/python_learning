@@ -1,0 +1,9 @@
+[
+  { "order_id": "ORD-1001", "amount": 599.00, "occurred_at": "2026-07-21T09:15:00+08:00" },
+  { "order_id": "ORD-1002", "amount": 159.00, "occurred_at": "2026-07-21T11:02:00+08:00" },
+  { "order_id": "ORD-1003", "amount": 2199.00, "occurred_at": "2026-07-20T22:30:00+08:00" },
+  { "order_id": "ORD-1004", "amount": 89.00, "occurred_at": "2026-07-21T02:30:00Z" },
+  { "order_id": "ORD-1005", "amount": 75.50, "occurred_at": "2026-07-20T17:00:00+00:00" },
+  { "order_id": "ORD-1006", "amount": 1299.00, "occurred_at": "2026-07-21T15:40:00+08:00" },
+  { "order_id": "ORD-1007", "amount": 399.00, "occurred_at": "2026-07-20T16:30:00Z" }
+]

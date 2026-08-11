@@ -4,19 +4,21 @@
 > **目标**:① 搭好开发环境,理解每个工具是干嘛的;② **换脑子**——理解 Python 与 Java 的根本差异,避免写出「用 Java 语法拼凑的 Python」。
 > 你 15 年 Java 经验,语法扫一眼就会,真正要小心的是**思维差异**和**工具链生态**。
 
-> 📐 **本教程的契约**:下面每一节(§1.1–§1.6)都**精确对应**作业里的一道题。讲过的才考,考的必讲过。卡住时,按作业题号回查对应小节即可,不用去翻外部文档。
+> 📐 **本教程的契约**:下面每一节(§1.1–§1.6)都**精确对应**作业里的题。讲过的才考,考的必讲过。卡住时,按作业题号回查对应小节即可,不用去翻外部文档。
 
 ---
 
 ## 🗺️ 本章地图(元学习 · 原则一)
 
+本章作业是一条完整主线:**你在给电商后台写一组工具函数**。8 个函数,每个刚好砸在一个 Java → Python 的转换点上。
+
 读完这章 + 完成作业,你将能够:
-- 解释 Python 动态类型 + 类型注解的关系(为什么注解"不强制")
-- 用元组解包一行交换变量、一行返回多值(告别临时变量)
-- 用默认参数 + f-string + `join` 写出 Pythonic 的字符串拼接
-- 用 truthiness 一句话判空,且知道它和 `None` 的陷阱
-- 分清 `str()` 和 `repr()`(describe 题的核心)
-- 用 `import` + 字典 + 列表推导式解析 mock JSON(工作流题的核心)
+- 解释 Python 动态类型 + 类型注解的关系(为什么注解"不强制"),以及大数为什么不溢出
+- 用元组解包一行交换变量、让函数"返回多个值"、一行拆解字符串
+- 用默认参数替代 Java 方法重载;用 f-string + `:.2f` 格式化价格;用 `join` 拼多行文本
+- 用 truthiness 一句话判空,且说清 `0` 和 `None` 的陷阱
+- 分清 `str()` 和 `repr()`(审计日志场景的核心)
+- 用 `import` + 字典 + 带过滤的列表推导式处理 mock JSON;用 `min`/`max`/`sum` + 生成表达式做聚合
 - 用 `venv` / `uv` 管理依赖,理解为什么 Python 需要虚拟环境(Java 不需要)
 - 用 `pytest` 跑测试、读断言失败;用 `mypy` / `ruff` 做静态检查(模拟 Java 编译期)
 - 避开 Java 老手最容易踩的 7 个坑
@@ -25,12 +27,14 @@
 
 | 作业题 | 对应小节 | 核心知识点 |
 |--------|----------|-----------|
-| `add` | §1.1 | 动态类型 + 类型注解 |
-| `swap` | §1.2 | 元组打包/解包 |
-| `greet` | §1.3 | 默认参数 + f-string + `join` + `*` |
-| `first_or_default` | §1.4 | truthiness 真值表 |
-| `describe` | §1.5 | 一切皆对象 + `repr` vs `str` |
-| `load_product_names` | §1.6 | `import` + 字典 + 列表推导式 |
+| `calc_line_total` | §1.1 | 动态类型 + 类型注解 + int 不溢出 |
+| `parse_sku` | §1.2 | 元组打包/解包 + `split` + `int()` |
+| `format_price_tag` | §1.3 | 默认参数 + f-string `:.2f` |
+| `render_price_list` | §1.3 | `join` + 列表推导式(最小形态) |
+| `first_in_stock_name` | §1.4 | truthiness 真值表 + 提前 return |
+| `debug_repr` | §1.5 | 一切皆对象 + `repr` vs `str` + `type().__name__` |
+| `load_out_of_stock_skus` | §1.6 | `import` + 字典 + 带过滤的推导式 |
+| `inventory_summary` | §1.6 | `len`/`min`/`max`/`sum` + 生成表达式 + dict 字面量 |
 
 ---
 
@@ -51,50 +55,99 @@
 ## ① 预览猜(2 分钟 · 激活你的 Java 直觉)
 
 先别看答案,凭 Java 经验猜一猜(猜错没关系,错了记得更牢):
-1. `def add(a: int, b: int)` 标了类型,调用 `add(1, "2")` 会怎样?(编译错?运行错?正常?)
-2. Java 要临时变量才能交换两个值,Python 要几个变量?
-3. `"ab" * 3` 在 Python 里等于什么?Java 里能这么写吗?
-4. Java 要写 `if (items == null || items.isEmpty())`,Python 一句怎么写?
-5. `print("hi")` 显示 `hi`,但为什么测试期望 describe 显示 `'hi'`(带引号)?
-6. Java 的 `import` 是编译期声明,Python 的 `import` 是什么?
+1. `def calc_line_total(price: float, quantity: int)` 标了类型,调用时传两个字符串会怎样?(编译错?运行错?居然能跑?)
+2. Java 方法要返回「前缀、序号」两个值,得造个 record。Python 怎么返回?
+3. Java 给方法加个"可选参数"要写重载。Python 怎么做到一个函数三种调法?
+4. Java 要 `if (list == null || list.isEmpty())`,Python 一句怎么写?`stock` 为 `0` 时 `if stock:` 进不进?
+5. `print("hi")` 显示 `hi`,但为什么审计日志里我们期望看到 `'hi'`(带引号)?
+6. Java 的 `import` 是编译期声明,Python 的 `import` 在什么时候执行?
 
 > 猜完,带着验证心态进入正文。
 
 ---
 
-## §1.1 动态类型 + 可选类型注解(对应:`add`)🔴
+## §1.1 动态类型 + 可选类型注解(对应:`calc_line_total`)🔴
 
-Java 是**静态强类型**:编译期检查,类型错了编不过。
+### Java 对照:类型错了,编译就挂
 
 ```java
-// Java:类型错了,编译报错
-int add(int a, int b) { return a + b; }
-add(1, "2"); // ❌ 编译失败
+// Java:静态强类型,编译期检查
+double calcLineTotal(double price, int quantity) { return price * quantity; }
+
+calcLineTotal(599.0, 2);     // ✅ 1198.0
+calcLineTotal("599", "2");   // ❌ 编译失败,根本跑不起来
 ```
 
-Python 是**动态强类型**:运行时才确定类型。类型注解(`: int`)只是**给人和工具看的提示**,运行时**完全不强制**。
+### Python:注解是"建议",运行时不检查
 
 ```python
-# Python:注解是"建议",运行时不检查
-def add(a: int, b: int) -> int:
-    return a + b
+def calc_line_total(price: float, quantity: int) -> float:
+    return price * quantity
 
-add(1, 2)     # ✅ 3
-add(1, "2")   # ⚠️ 不报错地传进去,运行到 a+b 时才 TypeError: int + str
-add("a", "b") # ⚠️ 也不报错,返回 "ab"(字符串也能 +)
+calc_line_total(599.0, 2)      # ✅ 1198.0
+calc_line_total(89, 3)         # ✅ 267     —— 注解写 float,传 int 照样算
+calc_line_total("599", "2")    # ⚠️ 传字符串不报错,运行到 * 时 TypeError
+calc_line_total("ab", 3)       # ⚠️ 居然返回 "ababab"!字符串 * int = 重复
 ```
 
-> 🤯 **Java 老手震惊点**:类型注解不是约束,是文档。真正的约束靠 **mypy**(§1.8)在写代码时静态检查,模拟 Java 的编译期。运行时一律鸭子类型——"能 + 就行,不管你是啥"。
+> 🤯 **Java 老手震惊点**:类型注解不是约束,是**给人和工具看的文档**。真正的约束靠 `mypy`(§1.8)在写代码时静态检查,模拟 Java 的编译期。运行时一律**鸭子类型**——"能 `*` 就行,不管你是啥"。
 >
-> **强类型**的"强"体现在:Python 不会像 JS 那样隐式 `1 + "2" = "12"`,它会直接抛 `TypeError`。
+> **强类型**的"强"体现在:Python 不会像 JS 那样隐式 `1 + "2" = "12"`,它直接抛 `TypeError`。
 
-> ✅ 做 `add` 题:`return a + b` 即可,注解照抄。
+### 真实场景:为什么"注解不强制"反而是生产力
+
+后端常见的价格计算里,int/float 经常混着来(单价读自 JSON 可能是 int 也可能是 float):
+
+```python
+# JSON 解析出来的数据,类型由值决定,不是你声明的
+row1 = {"price": 599.0, "qty": 2}     # price 是 float
+row2 = {"price": 89, "qty": 3}        # price 是 int(89 不是 89.0)
+
+calc_line_total(row1["price"], row1["qty"])   # 1198.0
+calc_line_total(row2["price"], row2["qty"])   # 267
+```
+
+Java 里你得先决定字段类型再写 getter;Python 里"能算就行"。代价是:**类型错了不炸在编译期,炸在运行期**——所以 Python 项目格外依赖测试(pytest)和静态检查(mypy),这正是本课程"测试通过 = 掌握"的原因。
+
+### 附赠考点:int 永不溢出
+
+```java
+long big = 10_000_000_000_000_000_000L * 10_000_000_000_000_000_000L;  // ❌ long 溢出,静默绕回
+```
+
+```python
+calc_line_total(10**18, 10**18)   # ✅ 10**36,Python int 自动扩容,永不溢出
+```
+
+> ✅ **做 `calc_line_total` 题**:`return price * quantity` 即可,注解照抄。测试会验证 int 单价和大数两种情况。
 
 ---
 
-## §1.2 元组与解包(对应:`swap`)🟡
+## §1.2 元组与解包(对应:`parse_sku`)🟡
 
-### Python 怎么交换两个值
+### Java 对照:返回两个值有多麻烦
+
+```java
+// Java:想返回 (前缀, 序号) 两个值,得先造个类型
+record SkuParts(String prefix, int seq) {}
+SkuParts parseSku(String sku) { ... }
+```
+
+Python 不用,**元组(tuple)** 是语言级内置,轻量到随手用。
+
+### 元组是什么:不可变的列表
+
+```python
+point = (3, 4)        # 一个元组
+point = 3, 4          # 不加括号也是元组——逗号才是关键
+x, y = point          # 解包:x=3, y=4
+```
+
+> 🟡 Java 类比:元组 ≈ 不可变的 `List` + `record` 的杂交体,但无需定义类。
+
+### 解包:一行接住多个值
+
+**为什么 `a, b = b, a` 交换不需要临时变量?**——因为赋值是「**先把右边整体求值打包成元组,再解包给左边**」:
 
 ```java
 // Java:必须借临时变量
@@ -102,43 +155,45 @@ int tmp = a; a = b; b = tmp;
 ```
 
 ```python
-# Python:一行,无临时变量
 a, b = b, a
+# 1. 右边 b, a 先求值,打包成元组 (b的旧值, a的旧值)——相当于存了份快照
+# 2. 再把元组解包到左边的 a, b
 ```
 
-**为什么不用临时变量?**——因为 Python 的赋值是「**先把右边整体求值,再解包给左边**」:
-1. 右边 `b, a` 先求值,打包成一个**元组** `(b的值, a的值)`(此时 a/b 还是旧值,已固化进元组)
-2. 再把这个元组**解包**到左边的 `a, b`
+### 真实场景 1:拆解分隔字符串(parse_sku 的原型)
 
-两步之间元组是中转,所以不会出现"先改 a 导致 b 也变错"的问题。Java 老手可以理解成:右边先存了一份快照。
-
-### 元组(tuple)是什么
-
-元组就是**不可变的列表**,用逗号定义,常用括号包裹:
+SKU、日志行、CSV 行……后端到处是"按分隔符拆开再各取所需":
 
 ```python
-point = (3, 4)        # 一个元组
-point = 3, 4          # 不加括号也是元组(逗号才是关键)
-x, y = point          # 解包:x=3, y=4
+"KB-001".split("-")          # ["KB", "001"]   split 返回 list
+
+prefix, num = "KB-001".split("-")    # 解包:prefix="KB", num="001"(还是 str!)
+
+int("001")                   # 1    int() 转数字,自动去前导零
+int("KB")                    # ❌ ValueError:不是数字会抛异常
 ```
 
-> 🟡 Java 类比:Java 没有元组,要么用数组、要么写 `record`/POJO。Python 的元组是语言级内置,轻量到可以随手用。
+组合起来就是作业答案:
 
-### 函数返回"多个值"
+```python
+def parse_sku(sku: str) -> tuple[str, int]:
+    prefix, num = sku.split("-")
+    return prefix, int(num)
+
+parse_sku("KB-001")    # ("KB", 1)
+p, n = parse_sku("BK-005")   # 返回值也能继续解包:p="BK", n=5
+```
+
+### 真实场景 2:函数"返回多个值"
 
 Python 函数**只能返回一个值**,但元组让它**看起来**返回了多个:
 
 ```python
-def swap(a, b):
-    return b, a          # 实际返回的是元组 (b, a)
-
-result = swap(1, 2)      # result == (2, 1)
-x, y = swap(1, 2)        # 直接解包:x=2, y=1
-
-# 另一个常见用法:一次返回多个有意义的结果
 def min_max(nums):
-    return min(nums), max(nums)
-lo, hi = min_max([3, 1, 4, 1, 5])   # lo=1, hi=5
+    return min(nums), max(nums)     # 实际返回一个元组
+
+result = min_max([3, 1, 4, 1, 5])   # result == (1, 5)
+lo, hi = min_max([3, 1, 4, 1, 5])   # 直接解包:lo=1, hi=5
 ```
 
 ### 坑:解包数量必须匹配
@@ -148,105 +203,140 @@ a, b = [1, 2, 3]        # ❌ ValueError: too many values to unpack
 a, b, c = [1, 2]        # ❌ ValueError: not enough values to unpack
 
 # 想收集多余的,用星号 *
-a, *rest = [1, 2, 3]    # a=1, rest=[2, 3]
+a, *rest = [1, 2, 3]              # a=1, rest=[2, 3]
 first, *middle, last = [1, 2, 3, 4]   # first=1, middle=[2,3], last=4
 ```
 
-> ✅ 做 `swap` 题:`return b, a`。
+> ✅ **做 `parse_sku` 题**:`split` → 解包 → `int()` 转换 → 返回元组。注意测试会查前导零(`"MN-003"` 的序号必须是 `3` 不是 `"003"`)。
 
 ---
 
-## §1.3 默认参数 + f-string + 字符串操作(对应:`greet`)🟡
+## §1.3 默认参数 + f-string + join + 推导式(对应:`format_price_tag`、`render_price_list`)🟡
 
-### 默认参数:Python 不要方法重载
+### 默认参数:Python 不需要方法重载
 
 ```java
-// Java:写 3 个 greet 重载
-String greet(String name) { return greet(name, "Hello"); }
-String greet(String name, String greeting) { return greeting + ", " + name + "!"; }
+// Java:可选参数 = 写 N 个重载
+String formatPriceTag(String name, double price) { return formatPriceTag(name, price, "¥"); }
+String formatPriceTag(String name, double price, String currency) { ... }
 ```
 
 ```python
 # Python:一个函数,默认参数搞定
-def greet(name: str, greeting: str = "Hello", times: int = 1) -> str:
+def format_price_tag(name: str, price: float, currency: str = "¥") -> str:
     ...
-```
 
-调用时可以只传前面、跳着传:
-```python
-greet("Alice")                # 用默认 greeting="Hello", times=1
-greet("Bob", "Hi")            # greeting="Hi"
-greet("Carl", times=3)        # 关键字参数,跳过 greeting
+format_price_tag("机械键盘", 599.0)                 # currency 用默认 "¥"
+format_price_tag("无线鼠标", 159.0, "$")            # 位置传参
+format_price_tag("无线鼠标", 159.0, currency="$")   # 关键字传参,可读性更好 ✅
 ```
 
 **为什么**:默认参数把"可选性"内建进函数签名,一个签名表达 N 种调用形态。这是 Python 极常用的特性。
 
+> ⚠️ 默认参数有个著名陷阱(可变默认值),§1.10 坑 6 先埋个伏笔,Ch02 详讲。
+
 ### f-string:告别 `String.format`
 
-```python
-name, price, count = "键盘", 599.0, 3
-# Java: String.format("%s 总价 %.2f", name, price*count)
-# Python:直接在字符串里写表达式
-msg = f"{name} 总价 {price * count:.2f} 元"   # "键盘 总价 1797.00 元"
-
-line = f"{greeting}, {name}!"   # "Hello, Alice!"
+```java
+// Java
+String tag = String.format("%s %s%.2f", name, currency, price);
 ```
 
-> f-string 前面那个 `f` 是开关。`{}` 里能放任意表达式,`:.2f` 是格式说明(保留 2 位小数)。
-
-### 字符串/列表的 `*`(重复)和 `join`(拼接)
-
-`greet` 题还要把一行问候**重复 times 次、用换行分隔**。需要两个工具:
-
 ```python
-# 重复:用 *
-"ab" * 3              # "ababab"     字符串重复
-[line] * 3            # [line, line, line]   列表重复
+# Python:字符串前加 f,{} 里写任意表达式
+tag = f"{name} {currency}{price:.2f}"
 
-# 拼接:用 str.join(分隔符)
-"-".join(["a", "b", "c"])        # "a-b-c"
-"\n".join(["x", "y", "z"])       # 三行:x / y / z
-"".join(["a", "b", "c"])         # "abc"   分隔符为空就是纯拼接
+# 真实场景:价格必须两位小数
+f"{599.0:.2f}"     # "599.00"   ← 整数也要补零,对账系统刚需
+f"{75.5:.2f}"      # "75.50"    ← 只带一位小数的,补到两位
+f"{599.0 * 2:.2f}" # "1198.00"  ← {} 里能放完整表达式
 ```
 
-> 🟡 Java 类比:`String.join("\n", list)`。Python 是 `分隔符.join(列表)`,**注意主语是分隔符不是列表**——Java 老手一开始常写反。
+> `:.2f` 是**格式说明符**:冒号开始,`.2f` = 定点数保留 2 位。作业里 `75.5` 必须输出 `"75.50"`,靠的就是它。
 
-**为什么用 join 而不是 `+` 循环?**——join 是一次性分配内存,**O(n)**;而循环里每次 `s += line` 都会新建一个字符串,**O(n²)**。join 是 Pythonic 的标准做法。
+### `join` 拼多行:主语是分隔符
 
-### 组合起来:greet 的 Pythonic 写法
+真实场景:对账导出要把多行文本拼成一个大字符串,行间用换行分隔。
 
-```python
-def greet(name: str, greeting: str = "Hello", times: int = 1) -> str:
-    line = f"{greeting}, {name}!"
-    return "\n".join([line] * times)
+```java
+// Java
+String text = String.join("\n", lines);
 ```
 
-一行 `[line] * times` 造出 n 份,`"\n".join` 用换行拼起来。
+```python
+# Python:主语是【分隔符】,参数是列表 —— Java 老手一开始常写反
+"\n".join(["a", "b", "c"])    # "a\nb\n c" 三行
+"-".join(["2026", "08", "11"])  # "2026-08-11"
+"".join(["a", "b"])           # "ab"   分隔符为空 = 纯拼接
+```
 
-> ⚠️ **字符串里的换行**:写成 `"\n"`(一个反斜杠 + n)表示**换行符**;写成 `"\\n"`(两个反斜杠)表示**字面的反斜杠和字母 n**。这是上一版你踩过的坑——务必用单反斜杠。
+**为什么用 join 而不是 `+` 循环?**
 
-> ✅ 做 `greet` 题:见上。
+```python
+# ❌ 错误写法(慢):字符串不可变,每次 += 都新建一个字符串,O(n²)
+text = ""
+for line in lines:
+    text += line + "\n"
+
+# ✅ 正确写法:join 一次性分配内存,O(n)
+text = "\n".join(lines)
+```
+
+> ⚠️ `"\n"`(单反斜杠)是**换行符**;`"\\n"`(双反斜杠)是**字面的 `\` 和 `n`** 两个字符。写错测试一定红。
+
+### 列表推导式(最小形态):对标 stream map
+
+要"对列表里每个商品都生成一行标签",Java 用 Stream,Python 用**列表推导式**:
+
+```java
+// Java Stream
+List<String> lines = products.stream()
+    .map(p -> formatPriceTag(p.getName(), p.getPrice(), currency))
+    .collect(Collectors.toList());
+```
+
+```python
+# Python:读作"对每个 p,算出 format_price_tag(...),收集成列表"
+lines = [format_price_tag(p["name"], p["price"], currency) for p in products]
+```
+
+语法骨架:`[表达式 for 变量 in 可迭代对象]`。(带 `if` 过滤的完整形态 §1.6 讲。)
+
+### 组合起来:render_price_list
+
+```python
+def render_price_list(products: list[dict], currency: str = "¥") -> str:
+    lines = [format_price_tag(p["name"], p["price"], currency) for p in products]
+    return "\n".join(lines)
+
+render_price_list([{"name": "无线鼠标", "price": 159.0},
+                   {"name": "设计模式", "price": 75.5}])
+# "无线鼠标 ¥159.00\n设计模式 ¥75.50"
+
+render_price_list([])    # ""   join 空列表 = 空串(边界情况,测试会考)
+```
+
+> ✅ **做 `format_price_tag` / `render_price_list` 题**:见上。后者复用前者,别重复造轮子。
 
 ---
 
-## §1.4 truthiness 真值表(对应:`first_or_default`)🟡
+## §1.4 truthiness 真值表(对应:`first_in_stock_name`)🟡
 
-### Python 的 `if` 能直接判断任何对象
+### Java 对照:判空要写一长串
 
 ```java
-// Java:必须显式判 null 和 empty
-if (items == null || items.isEmpty()) return default;
-return items.get(0);
+// Java
+if (items == null || items.isEmpty()) return null;
+return items.get(0).getName();
 ```
 
 ```python
 # Python:一句
 if not items:
-    return default
-return items[0]
+    return None
 ```
 
-`if not items:` 一句同时覆盖了 **None、空列表、空串、空字典、0……**——因为 Python 给每个对象定义了"真假值"(truthiness)。
+`if not items:` 同时覆盖 **None、空列表、空串、空字典、0……**——Python 给每个对象定义了"真假值"(truthiness)。
 
 ### 真值表(背下来)
 
@@ -261,201 +351,219 @@ return items[0]
 
 **记忆口诀**:**空、零、假、None** 这四类是 falsy,其他全真。
 
-**为什么这么设计?**——Python 哲学是"简单直接"。PEP 8 明确推荐:`if items:` 比 `if len(items) > 0:` 更 Pythonic。它把"有没有内容"这个极常见的判断压成一个词。
+**为什么这么设计?**——PEP 8 明确推荐 `if items:` 优于 `if len(items) > 0:`,把"有没有内容"压成一个词。
 
-> ✅ 做 `first_or_default` 题:
-> ```python
-> def first_or_default(items: list, default=None):
->     if not items:
->         return default
->     return items[0]
-> ```
-> 或更 Pythonic 的三元表达式:`return items[0] if items else default`。
+### 真实场景:推荐位找第一个有货商品
+
+```python
+def first_in_stock_name(products):
+    for p in products:
+        if p["stock"]:            # stock=0 是 falsy,自动跳过缺货 ✅
+            return p["name"]      # 提前 return:找到就返回,函数结束
+    return None                   # 循环跑完没 return → 全缺货/空列表
+
+first_in_stock_name([{"name": "智能水杯", "stock": 0},
+                     {"name": "机械键盘", "stock": 120}])   # "机械键盘"
+first_in_stock_name([])                                     # None
+```
+
+> 🟡 **提前 return**:函数里 `return` 一旦执行,函数立即结束。`for` 循环体里的 return 表示"找到就交差",循环后的 return 是兜底。Java 一样,但 Python 里这个模式和 truthiness 搭配出现率极高。
 
 ### 坑:`if x:` 会把 `0` 也判成假!
 
-这是 truthiness 最危险的陷阱,Java 老手特别容易踩:
+这是 truthiness 最危险的陷阱,本题也靠它**反向利用了**这个特性:
 
 ```python
-count = 0
-if count:          # ❌ False!因为 0 是 falsy
-    print("有数量")  # 不会执行——但你的本意可能是"count 有值"
+stock = 0
+if stock:              # ❌ 不进分支 —— 本题里这正是我们要的(0 = 缺货)
+    print("有货")
 
-# 正确区分"没有值(None)"和"值为 0":
-if count is not None:     # ✅ 这样 0 也能进
-    print("count 有值")
+# 但如果你的本意是"stock 字段填没填",0 是个合法值,就踩坑了:
+if stock is not None:  # ✅ 明确区分"没填(None)"和"填了 0"
+    print("stock 有值")
 ```
 
 **结论**:
-- 想判断"是不是空/没有" → 用 `if not x:`
-- 想判断"是不是 None" → 用 `if x is None:`(§1.10 坑2 会再强调)
+- 判断"空/没有内容" → `if not x:`
+- 判断"是不是 None" → `if x is None:`(§1.10 坑 2 再强调)
+- 本题场景"0 库存 = 没货"语义吻合,所以 `if p["stock"]:` 是对的;语义不吻合时改用显式比较 `if p["stock"] > 0:`。
+
+> ✅ **做 `first_in_stock_name` 题**:见上。测试有一条"跳过缺货取后面"的用例,专治"不看 stock 直接取第一个"的偷懒实现。
 
 ---
 
-## §1.5 一切皆对象 + `repr` vs `str`(对应:`describe`)🔴
-
-这节是 `describe` 题的全部。请仔细读——上一版教程漏讲了,导致你卡在字符串那题。
+## §1.5 一切皆对象 + `repr` vs `str`(对应:`debug_repr`)🔴
 
 ### 差异:Python 没有基本类型
 
-Java 区分**基本类型**(`int`/`double`/`boolean`)和**引用类型**(`Integer`/`String`),有装箱拆箱。
-Python **没有基本类型**。整数、布尔值、甚至**函数、类、模块**,通通是对象。
+Java 区分**基本类型**(`int`/`double`)和**引用类型**(`Integer`/`String`),有装箱拆箱。
+Python **没有基本类型**——整数、布尔、甚至**函数、类、模块**,通通是对象:
 
 ```python
 x = 42
-print(x.bit_length())   # ✅ 6 —— int 也是对象,有方法
-
-print(type(42))         # <class 'int'>   ← 注意这是个类型对象,不是字符串
-print(type("hi"))       # <class 'str'>
+x.bit_length()        # ✅ 6 —— int 也是对象,有方法
+type(42)              # <class 'int'>   ← 注意:这是类型对象,不是字符串
 ```
 
 ### 拿到"类型名字符串":`type(obj).__name__`
 
-`type(42)` 返回的是**类型对象** `<class 'int'>`,不是字符串 `"int"`。要拿到干净的名字,取它的 `__name__` 属性:
-
 ```python
 type(42).__name__       # "int"
 type("hi").__name__     # "str"
-type([1,2]).__name__    # "list"
+type([1, 2]).__name__   # "list"
 type(3.14).__name__     # "float"
 ```
 
-> 🟡 为什么有两层?——因为 Python 里**类也是对象**。`int` 是一个"类的对象",它自己是 `type` 类的实例(`type(type(42))` 是 `<class 'type'>`)。`__name__` 是这个类对象的名字属性。Java 里 `Integer.class.getSimpleName()` 类似。
+> 🟡 Java 类比:`obj.getClass().getSimpleName()`。为什么有两层?因为 Python 里**类也是对象**,`int` 本身是一个类对象,`__name__` 是它的名字属性。
 
-### `str()` vs `repr()`:describe 题的核心
+### `str()` vs `repr()`:审计日志场景的核心
 
-Python 有**两个**把对象转字符串的函数,Java 老手要特别留意(Java 的 `toString()` 只有一个):
+线上排查 bug 时,日志里光打印值不够——`hi` 是字符串值还是变量名?要**无歧义表示**。Python 为此准备了**两个**转字符串函数(Java 只有 `toString()` 一个):
 
-```python
-str(obj)    # 给【人】看:友好、简洁的显示
-repr(obj)   # 给【程序】看:无歧义,尽量能被 eval 重建回来
-```
+| 函数 | 给谁看 | 设计目标 |
+|---|---|---|
+| `str(obj)` | **人**:日志正文、页面展示 | 友好、简洁 |
+| `repr(obj)` | **程序**:调试、审计日志 | 无歧义,尽量能被 `eval` 重建 |
 
-**对比表**(这是 describe 题的答案表):
+**对照表**(debug_repr 题的答案全在这):
 
-| 对象 `obj` | `str(obj)` | `repr(obj)` |
+| 对象 | `str(obj)` | `repr(obj)` |
 |---|---|---|
 | `42` | `"42"` | `"42"` |
 | `3.14` | `"3.14"` | `"3.14"` |
 | `"hi"` | `hi`(**无引号**) | `'hi'`(**有引号**) |
 | `[1, 2]` | `"[1, 2]"` | `"[1, 2]"` |
 
-**关键区别就在字符串这一行**:数字和列表,`str` 和 `repr` 长一样;但**字符串**,`str` 去掉引号(给人看),`repr` 保留引号(给程序看)。
+**关键就在字符串这一行**:数字和列表两者长一样;字符串的 `repr` **保留引号**。
 
-**为什么 `repr` 要给字符串加引号?**——因为 `repr` 的设计目标是"**无歧义地标识一个对象的类型和值,最好能直接 eval 重建**":
+**为什么 repr 要给字符串加引号?**——目标是"无歧义,最好能 eval 重建":
+
 ```python
-eval(repr("hi"))   # == "hi"   ✅ 能重建
-eval(repr(42))     # == 42     ✅
-eval(str("hi"))    # eval("hi") → 去找名为 hi 的变量 → NameError(除非恰好有这个变量)
+eval(repr("hi"))   # ✅ == "hi"  能重建
+eval(str("hi"))    # ❌ eval("hi") → 去找名为 hi 的变量 → NameError
 ```
-加引号让你一眼区分"这是字符串值 `hi`"还是"这是变量名 `hi`"。这就是 describe 题为什么期望 `'hi' is a str` 带引号——它要的是**无歧义表示**。
-
-> 🟡 Java 类比:`str(obj)` ≈ `obj.toString()`(给人看);`repr(obj)` 没有完美对应,最接近的是"调试器/日志里能区分类型的表示"。Java 的 `toString` 一般只有一个,Python 分 `__str__`/`__repr__` 两个钩子。
 
 ### 什么时候看到的是 str,什么时候是 repr?
 
-- `print(obj)` → 用 **str**
-- 在 REPL / 交互式环境里直接敲 `obj` 回车 → 用 **repr**
-- f-string `f"{obj}"` → 用 **str**(describe 题踩坑点!)
-
 ```python
-print("hi")        # 显示:  hi       (str, 无引号)
-# REPL 里敲:
->>> "hi"
-'hi'               # 显示带引号(repr)
->>> 42
-42
+print("hi")     # 显示 hi        (print 用 str)
+>>> "hi"        # REPL 里敲回车
+'hi'            # 显示带引号      (REPL 用 repr)
+f"{'hi'}"       # "hi"           (f-string 默认用 str —— 踩坑点!)
+f"{repr('hi')}" # "'hi'"         (f-string 里要 repr 得显式调)
 ```
 
-所以 `describe` 题里,直接写 `f"{obj}"` 对字符串得到的是 `hi`(无引号),**过不了**测试。要换成 `f"{repr(obj)}"` 才能得到 `'hi'`。
+所以 `debug_repr` 题里写 `f"{value}"` 对字符串得到无引号的 `hi`,**过不了**测试;必须显式 `f"{repr(value)}"`。
 
-> ✅ 做 `describe` 题:
-> ```python
-> def describe(obj) -> str:
->     return f"{repr(obj)} is a {type(obj).__name__}"
-> ```
-> 验证:`describe(42)`→`42 is a int`、`describe("hi")`→`'hi' is a str`、`describe([1,2])`→`[1, 2] is a list`、`describe(3.14)`→`3.14 is a float`。全对。
+### 组合起来:debug_repr
+
+```python
+def debug_repr(value) -> str:
+    return f"{repr(value)} ({type(value).__name__})"
+
+debug_repr(42)      # "42 (int)"
+debug_repr("hi")    # "'hi' (str)"
+debug_repr([1, 2])  # "[1, 2] (list)"
+```
+
+> ✅ **做 `debug_repr` 题**:见上,一行。
 
 ---
 
-## §1.6 `import` + 字典 + 列表推导式(对应:`load_product_names`)🔴
+## §1.6 `import` + 字典 + 推导式(带过滤)+ 聚合(对应:`load_out_of_stock_skus`、`inventory_summary`)🔴
 
-这节是工作流题的全部,上一版完全没讲,这是补上的。
-
-### `import`:Python 的导入语句
+### `import`:运行时执行的语句
 
 ```python
 from conftest import load_mock_json   # 从 conftest 模块导入一个函数
-import json                            # 导入整个 json 模块,用 json.loads()
-from assets.mock_data import products  # 从子包导入
+import json                            # 导入整个模块,用 json.loads()
 ```
 
 **与 Java 的根本区别**:
-- Java 的 `import com.foo.Bar;` 是**编译期声明**,只是告诉编译器 `Bar` 在哪,运行时不存在。
-- Python 的 `import` 是**运行时执行的语句**——它真的会去找到那个 `.py` 文件(一个 `.py` 文件 = 一个模块),**执行它**,然后把里面的名字绑到当前作用域。
+- Java 的 `import com.foo.Bar;` 是**编译期声明**,只告诉编译器去哪找,运行时不存在。
+- Python 的 `import` 是**运行时执行的语句**——真的找到那个 `.py` 文件(一个文件 = 一个模块),**执行它**,把里面的名字绑到当前作用域。
 
-> 🟡 Java 类比:更接近 Java 的 `Class.forName()` 动态加载,而不是编译期 import。模块 = 一个 `.py` 文件;包(package)= 一个含 `__init__.py` 的目录。
+> 🟡 Java 类比:更接近 `Class.forName()` 动态加载。包(package)= 含 `__init__.py` 的目录。
 
-**项目里的 conftest 是什么**:`conftest.py` 是 pytest 的约定文件,放在项目根目录,里面的函数所有测试都能直接 `from conftest import xxx` 用。我们的 `load_mock_json(name)` 就定义在那(读 `assets/mock_data/` 下的 JSON 文件)。
+**项目里的 conftest 是什么**:`conftest.py` 是 pytest 的约定文件,放项目根目录,里面定义了 `load_mock_json(name)`(读 `assets/mock_data/` 下的 JSON)和共享 fixture,所有测试/作业都能 `from conftest import load_mock_json`。
 
 ### 字典(dict):JSON 解析后的结果
 
-JSON 对象在 Python 里就是 **dict**(字典),类似 Java 的 `Map<String, Object>`,但语法原生、用得极频繁:
+JSON 对象在 Python 里就是 **dict**,类似 Java 的 `Map<String, Object>`,但语法原生:
 
 ```python
-p = {"id": 1, "name": "键盘", "price": 599.0, "stock": 10}
+p = {"id": 1, "name": "机械键盘", "price": 599.0, "stock": 120, "sku": "KB-001"}
 
-p["name"]              # 取值:"键盘"
-p["price"]             # 599.0
-p.get("stock", 0)      # 安全取值:有就返回,没有返回默认 0(不会抛错)
-p["color"]             # ❌ KeyError:键不存在会抛异常
+p["name"]              # "机械键盘"      方括号取值
+p.get("stock", 0)      # 120            安全取值:没有该键返回默认 0(≈ Java getOrDefault)
+p["color"]             # ❌ KeyError:键不存在抛异常(≈ Java Map.get 返回 null,但更严格)
 ```
 
-> 🟡 Java 类比:`Map<String, Object>` + `map.get("name")`。但 Python dict 是一等公民,`{}` 直接写,取值用方括号。
+### 带过滤的列表推导式:filter + map 合体
 
-### 列表推导式(list comprehension):Pythonic 的核心
-
-要"从一堆商品里提取所有 name",Java 用 Stream,Python 用**列表推导式**:
+§1.3 学了最小形态 `[f(x) for x in xs]`,加上 `if` 就是完整形态:
 
 ```java
-// Java Stream
-List<String> names = products.stream()
-    .map(p -> p.getName())
+// Java:filter + map 两步
+List<String> skus = products.stream()
+    .filter(p -> p.getStock() == 0)
+    .map(Product::getSku)
     .collect(Collectors.toList());
 ```
 
 ```python
-# Python 列表推导式
-[p["name"] for p in products]                          # 提取每个的 name
-[p["name"] for p in products if p["price"] > 100]      # 带过滤
-[f"{p['name']}-{p['price']}" for p in products]        # 带变换
+# Python:一句,读作"对每个 p,【如果】缺货,【算出】sku,收集成列表"
+[p["sku"] for p in products if p["stock"] == 0]
+
+# 骨架:[表达式 for 变量 in 可迭代对象 if 条件]
+[p["name"] for p in products]                        # 只 map
+[p["name"] for p in products if p["price"] > 100]    # filter + map
 ```
 
-语法骨架:`[表达式 for 变量 in 可迭代对象 if 条件]`——读作"**对每个 p,算出表达式,收集成列表**"。
-
-**为什么用推导式**:它是声明式的、紧凑的,Python 社区极推崇(PEP 8 / PEP 20 "简单胜于复杂")。等价的传统写法是 for + append:
+等价的传统写法(对照理解):
 
 ```python
-names = []
+skus = []
 for p in products:
-    names.append(p["name"])
-# 上面这 3 行 == [p["name"] for p in products]  这 1 行
+    if p["stock"] == 0:
+        skus.append(p["sku"])
+# 这 4 行 == [p["sku"] for p in products if p["stock"] == 0] 这 1 行
 ```
 
-> ⚠️ 推导式别写太长、别嵌套太深(超过两层可读性变差),那时就老老实实写 for 循环。
+> ⚠️ 推导式别嵌套超过两层,可读性变差就老老实实写 for 循环。
 
-### 组合起来:load_product_names
+### `min` / `max` / `sum` + 生成表达式:盘点报表三件套
+
+Java 聚合要 `Collectors.summingDouble(...)` 等样板;Python 内置函数直接收"括号版推导式"(叫**生成表达式**,不建临时列表,更省内存):
 
 ```python
-def load_product_names() -> list[str]:
-    from conftest import load_mock_json          # 1. 导入工具
-    data = load_mock_json("products.json")       # 2. 读 JSON → list[dict]
-    return [p["name"] for p in data]             # 3. 列表推导式提取 name
+prices = [p["price"] for p in products]   # 列表推导式:真的造一个 list
+min(p["price"] for p in products)         # 生成表达式:边算边喂给 min,不造 list ✅
+
+len(products)                              # 10       商品种数
+min(p["price"] for p in products)          # 75.5     最低价
+max(p["price"] for p in products)          # 2199.0   最高价
+sum(p["price"] * p["stock"] for p in products)   # 549055.0   总货值
 ```
 
-三步:导入 → 读数据(JSON 数组变成 list[dict])→ 推导式提取字段。
+> 🟡 生成表达式和列表推导式语法只差在括号:`[]` 造列表,`()` 惰性生成。喂给 `sum`/`min`/`max`/`join` 时优先用 `()`。
 
-> ✅ 做 `load_product_names` 题:见上。
+### 构造 dict 字面量:报表的返回类型
+
+```python
+summary = {
+    "count": len(products),
+    "min_price": min(p["price"] for p in products),
+    "max_price": max(p["price"] for p in products),
+    "total_value": sum(p["price"] * p["stock"] for p in products),
+}
+summary["min_price"]     # 75.5
+```
+
+> 🟡 Java 类比:像 `Map.of("count", 10, ...)` 但原生、无键数上限,且 dict 是一等公民(Ch02 详讲)。
+
+> ✅ **做 `load_out_of_stock_skus` 题**:导入 → 读 JSON → 带 if 的推导式。
+> ✅ **做 `inventory_summary` 题**:一个 dict 字面量,4 个键各一个内置聚合。测试里的 `total_value` 是手工验算过的 549055.0,你算出来的必须分毫不差。
 
 ---
 
@@ -483,8 +591,6 @@ Python 默认是**全局共享 site-packages**:你在项目 A 装了 `requests==
 
 ### 实操命令(在你的环境里跑一遍)
 
-你当前项目已经建好了 `.venv`(Python 3.14)。下面验证你**会**这些命令:
-
 ```bash
 cd /Users/zy/ai_learn/python_learning
 
@@ -505,16 +611,16 @@ uv run pytest                    # 在项目虚拟环境里跑命令(自动激�
 
 ## §1.8 pytest 工作流(本课程核心机制)
 
-> 你 15 年经验肯定用过 JUnit。pytest 比 JUnit 更简洁——不用写 class,不用 `@Test`,函数名以 `test_` 开头就是测试。
+> 你 15 年经验肯定用过 JUnit。pytest 比 JUnit 更简洁——不用写 class(写了也行,本章测试就按 class 分组),不用 `@Test`,函数名以 `test_` 开头就是测试。
 
 ### 跑测试的命令
 
 ```bash
 uv run pytest                                    # 跑所有测试(pyproject.toml 配的 testpaths)
 uv run pytest 01_python_core/ch01/ -v            # 只跑本章
-uv run pytest -k "swap"                          # 只跑名字含 "swap" 的测试
+uv run pytest -k "parse_sku"                     # 只跑名字含 "parse_sku" 的测试
 uv run pytest --lf                               # 只跑上次失败的(--last-failed)
-uv run pytest -v                                 # -v 详细模式,看每个测试名
+uv run pytest 01_python_core/ch01/test_ch01_assignment.py::TestParseSku -v   # 只跑一个类
 ```
 
 ### 读断言失败(pytest 的杀手锏)
@@ -522,16 +628,18 @@ uv run pytest -v                                 # -v 详细模式,看每个测�
 pytest 的 `assert` 比 JUnit 的 `assertEquals` 智能,失败时直接显示两边值:
 
 ```python
-def test_add():
-    assert add(1, 2) == 4   # 故意写错
+def test_float_price(self):
+    assert calc_line_total(599.0, 2) == 1199.0   # 故意写错
 ```
 
-失败输出会显示:
+失败输出:
+
 ```
->       assert add(1, 2) == 4
-E       assert 3 == 4
+>       assert calc_line_total(599.0, 2) == 1199.0
+E       assert 1198.0 == 1199.0
 ```
-一眼看出左边是 3、右边期望 4。
+
+一眼看出左边算出来 1198.0、期望 1199.0。
 
 ### 静态检查:模拟 Java 编译期
 
@@ -560,7 +668,7 @@ if __name__ == "__main__":
 
 > 🟡 `__name__` 是每个模块的内置变量。直接运行时它等于 `"__main__"`;被 import 时等于模块名(如 `"hello"`)。这个判断让你同一个文件既能当脚本跑,又能被当库 import——Java 要做到这个得拆两个类。
 >
-> 🟢 记不住没关系,先当成 Python 的 `public static void main` 就行。
+> 🟢 作业文件末尾就有这个块:实现完后 `python 01_python_core/ch01/ch01_assignment.py` 可以直接看效果(但判分靠 pytest)。
 
 ---
 
@@ -575,7 +683,7 @@ Java `==` 比较引用,`equals` 比较值。Python:
 - `is` 比较**身份/内存地址**(= Java `==` 引用相等)
 
 ```python
-a, b = [1,2], [1,2]
+a, b = [1, 2], [1, 2]
 a == b   # True(值相等)
 a is b   # False(不同对象)
 # 判 None 用 is:  if x is None   ✅   不要 if x == None
@@ -584,7 +692,7 @@ a is b   # False(不同对象)
 ### 坑 3:`None` 不是 `null`,判空要区分场景
 Python 用 `None`(首字母大写的单例对象)。
 - 想"判断是否为 None" → `if x is None:`
-- 想"判断是否为空/没有内容" → `if not x:`(见 §1.4 truthiness,注意 0 也是 falsy)
+- 想"判断是否为空/没有内容" → `if not x:`(见 §1.4,注意 0 也是 falsy)
 
 ### 坑 4:`True`/`False` 首字母大写,且是 `1`/`0` 的别名
 ```python
@@ -616,24 +724,25 @@ match status:
 
 ## 📝 本章作业
 
-打开 **`ch01_assignment.py`**,6 个函数。每个函数顶部注释标了【转换点】,对应正文某节(见开头「作业 ↔ 教程对应表」)。
+打开 **`ch01_assignment.py`**,8 个函数,一条电商后台主线。每个函数 docstring 标了【场景】和【转换点】,对应正文某节(见开头「作业 ↔ 教程对应表」)。
 
 **完成方式**:
 ```bash
 uv run pytest 01_python_core/ch01/test_ch01_assignment.py -v
 ```
-全绿 = 你掌握了 Ch01。**哪题卡住 → 回对应 § 查**(`describe`卡→§1.5,`load_product_names`卡→§1.6)。
+全绿 = 你掌握了 Ch01。**哪题卡住 → 回对应 § 查**(`parse_sku` 卡 → §1.2,`debug_repr` 卡 → §1.5,`inventory_summary` 卡 → §1.6)。
 
 ---
 
 ## ✅ 自测:你真的掌握了吗?
 
-- [x] 能解释「为什么 Python 需要虚拟环境而 Java 不需要」(§1.7)
-- [x] 能说清 `str()` 和 `repr()` 的区别,以及为什么字符串的 repr 带引号(§1.5)
-- [x] 能背 truthiness 真值表,知道 `if not 0` 会进分支的陷阱(§1.4)
-- [x] 能用列表推导式提取字段(§1.6)
-- [x] 知道判 `None` 要用 `is None` 而不是 `== None`(§1.10 坑2)
-- [x] 6 个作业全绿
+- [ ] 能解释「为什么 Python 需要虚拟环境而 Java 不需要」(§1.7)
+- [ ] 能说清 `str()` 和 `repr()` 的区别,以及为什么字符串的 repr 带引号(§1.5)
+- [ ] 能背 truthiness 真值表,说清 `if stock:` 什么时候对、什么时候是坑(§1.4)
+- [ ] 能默写带过滤的列表推导式骨架,知道生成表达式和它的差别(§1.6)
+- [ ] 知道判 `None` 要用 `is None` 而不是 `== None`(§1.10 坑 2)
+- [ ] 能解释 `a, b = b, a` 为什么不需要临时变量(§1.2)
+- [ ] 8 个作业全绿
 
 ---
 
@@ -642,9 +751,9 @@ uv run pytest 01_python_core/ch01/test_ch01_assignment.py -v
 > 费曼技巧:用大白话把概念讲给一个「Java 同事」听。**讲不清的地方 = 你还没真懂**,回去重读对应小节。可口头讲(通勤/洗澡),不必写下来。
 
 任选一题,讲清楚(1-2 分钟):
-1. 「为什么 Python 的类型注解不强制,而 Java 的类型是硬约束?」— 卡壳重读 §1.1
-2. 「`str()` 和 `repr()` 到底差在哪?为什么字符串的 repr 要带引号?」— 卡壳重读 §1.5
-3. 「为什么 `if not x:` 在 x=0 时也会进分支?怎么避免?」— 卡壳重读 §1.4
+1. 「为什么 Python 的类型注解不强制,而 Java 的类型是硬约束?那 Python 靠什么兜底?」— 卡壳重读 §1.1
+2. 「`str()` 和 `repr()` 到底差在哪?为什么审计日志里字符串要带引号?」— 卡壳重读 §1.5
+3. 「`if p["stock"]:` 在 stock=0 时不进分支,这在补货场景为什么正好是对的、在别的场景又为什么是坑?」— 卡壳重读 §1.4
 
 ✅ 自检:不查资料、不堆术语,能说清「为什么」吗?说不清 → 重读。
 
@@ -657,4 +766,4 @@ uv run pytest 01_python_core/ch01/test_ch01_assignment.py -v
 
 ## ⏭️ 下一步
 
-Ch01 掌握后,进 **Ch02 · 数据结构(list/tuple/dict/set)**——正式进入 Python 数据处理,作业就是你举的那个例子(从 mock json 解析商品、过滤、排序)。
+Ch01 掌握后,进 **Ch02 · 数据结构(list/tuple/dict/set)**——本章你只用了 list/dict 的皮毛,Ch02 把四大容器讲透,作业继续在 products.json 上实战(过滤、分组、聚合)。

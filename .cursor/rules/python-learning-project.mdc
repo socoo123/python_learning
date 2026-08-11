@@ -18,7 +18,7 @@ alwaysApply: true
 | M5 AI 框架 ⭐ | `05_ai_framework/` | Ch28–33 | 五件套已生成 |
 | M6 LeetCode | `06_leetcode/` | Ch34–40 | 五件套已生成 |
 
-权威文档：`SYLLABUS.md`（大纲）、`README.md`（学习指南）、`CLAUDE.md`（A=课程 / B=Web 蓝图）、`REVIEW.md`（闪卡索引）。
+权威文档：`SYLLABUS.md`（大纲）、`README.md`（学习指南）、`CLAUDE.md`（A=课程 / B=Web 蓝图）、`REVIEW.md`（闪卡索引）、`OPTIMIZATION_PLAN.md`（内容优化计划：用户说「重新优化 chNN」时**必读**，按其 SOP 重写该章 tutorial/作业/测试/review 并重烘焙 web）。
 
 ## 学习者画像
 

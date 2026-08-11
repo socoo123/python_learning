@@ -1,0 +1,13 @@
+192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] "GET /api/products HTTP/1.1" 200 1234
+10.0.0.5 - - [10/Oct/2023:13:55:37 +0000] "POST /api/orders HTTP/1.1" 201 567
+8.8.8.8 - - [10/Oct/2023:13:55:38 +0000] "DELETE /api/orders/1 HTTP/1.1" 500 89
+this line is malformed and should be skipped
+172.16.0.3 - - [10/Oct/2023:13:55:39 +0000] "GET /admin HTTP/1.1" 404 12
+192.168.1.1 - - [10/Oct/2023:13:55:40 +0000] "GET /api/products HTTP/1.1" 200 1234
+10.0.0.5 - - [10/Oct/2023:13:55:41 +0000] "GET /api/users HTTP/1.1" 500 234
+203.0.113.5 - - [10/Oct/2023:13:55:42 +0000] "GET /login HTTP/1.1" 401 88
+192.168.1.1 - - [10/Oct/2023:13:55:43 +0000] "GET /api/products HTTP/1.1" 200 1234
+another garbage line without any structure
+8.8.8.8 - - [10/Oct/2023:13:55:44 +0000] "GET /api/orders HTTP/1.1" 502 120
+198.51.100.2 - - [10/Oct/2023:13:55:45 +0000] "GET /api/products HTTP/1.1" 200 980
+192.0.2.1 - - [10/Oct/2023:13:55:46 +0000] "GET / HTTP/1.1" 200 456

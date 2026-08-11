@@ -7,7 +7,7 @@
 # A. Python 学习项目(已有内容)
 
 面向 15 年 Java 经验开发者的 Python 全栈学习项目,40 章 / 6 模块,逐章「五件套」交付。
-- 大纲:`SYLLABUS.md` ｜ 学习指南:`README.md` ｜ 闪卡索引:`REVIEW.md`
+- 大纲:`SYLLABUS.md` ｜ 学习指南:`README.md` ｜ 闪卡索引:`REVIEW.md` ｜ 内容优化计划:`OPTIMIZATION_PLAN.md`(用户说「重新优化 chNN」时**必读**并严格按其 SOP 执行)
 - 已生成内容:M1(Ch01-07)、M2(Ch08-12)、M3(Ch13-22)、M4(Ch23-27)、M5(Ch28-33)、M6(Ch34-40)——**40 章全齐**
 - 五件套约定:`ch{NN}/tutorial.md` + `ch{NN}_assignment.py`(作业,擦成 `...` 交付)+ `test_ch{NN}_assignment.py` + `review.md` + mock 数据
 - 工作流:写完整实现 → pytest 全绿 → 擦成 `...` → 写 tutorial/review。质量标准见 memory(`tutorial-coverage-standard`)。

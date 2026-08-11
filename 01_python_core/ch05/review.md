@@ -6,19 +6,25 @@
 
 | # | 正面(问题) | 背面(答案) | 掌握 |
 |---|---|---|---|
-| 1 | 魔术方法是什么?`len(cart)`/`x in cart`/`cart1+cart2` 各对应哪个? | 双下划线方法 `__xxx__`,让自定义类接入语言内置操作。`len`→`__len__`;`in`→`__contains__`;`+`→`__add__`;`for`→`__iter__` | ⬜ |
-| 2 | `@dataclass` 自动生成了哪些方法? | `__init__` / `__repr__` / `__eq__`(默认)。= Java Lombok `@Data` 或 record | ⬜ |
-| 3 | `@property` 干嘛的?为什么 `cart.total` 不带括号? | 把方法包装成【只读属性】,外部像字段一样访问(`cart.total` 不是 `cart.total()`)。实现 `__len__` 等也是为了这种「无缝集成」 | ⬜ |
-| 4 | `__init__` 和 `__new__` 哪个是构造?日常用哪个? | `__new__` 才是【构造】(造对象),`__init__` 是【初始化】(对象已造好,填属性)。99% 只用 `__init__` | ⬜ |
-| 5 | `super()` 的作用?子类怎么调父类的 __init__? | 调用父类方法。`super().__init__()` 调父类初始化;子类同名方法【覆盖】父类,但可用 `super().方法名()` 复用父类逻辑。= Java `super` | ⬜ |
-| 6 | Python 创建对象写 `new Product(...)` 吗?第一个参数 self 是什么? | **不写 new**,直接 `Product(...)`。实例方法第一个参数必须是 `self`(= Java 隐式的 `this`),调用时不传,自动填 | ⬜ |
-| 7 | Python 有方法重载吗?`_x` 和 `__x` 的区别? | **没有重载**,后定义覆盖前定义,可选参数用默认值。`_x` 是【约定】的内部属性(不强制);`__x` 触发名称改写(半私有)。无 Java 的编译期 private | ⬜ |
+| 1 | Python 创建对象写 `new` 吗?`__init__` 是构造器吗? | **不写 new**,直接 `Product(...)`。构造是 `__new__`(99% 不碰),`__init__` 是【初始化】——对象已造好,只填属性 | ⬜ |
+| 2 | 实例方法的第一个参数 `self` 是什么?忘写了报什么错? | = Java 隐式的 `this`,Python 显式声明、调用时自动传入。忘写 → `TypeError: takes N arguments but N+1 given`(多出来的就是 self) | ⬜ |
+| 3 | `@dataclass` 自动生成了哪些方法?字段顺序有什么规则? | `__init__` / `__repr__` / `__eq__`。带默认值的字段必须在无默认值的后面(同函数默认参数)。≈ Java Lombok `@Data`;加 `frozen=True` 才 ≈ record | ⬜ |
+| 4 | 类体里写 `_items = []` 和 `__init__` 里写 `self._items = []` 有什么区别? | 类体里 = **类属性**,所有实例共享同一个(≈ Java static,串单事故);`__init__` 里 = 实例属性,各实例独立。实例属性必须在 `__init__` 里建 | ⬜ |
+| 5 | `@property` 干嘛的?为什么 `o.total` 不带括号?赋值会怎样? | 把方法包装成只读属性:外部像字段访问,内部每次现算。带括号 = 调用算好的值 → TypeError。没定义 setter → `o.total = x` 抛 AttributeError(天然只读) | ⬜ |
+| 6 | `len(c)` / `x in c` / `for x in c` / `c[k]` 各对应哪个魔术方法? | `__len__` / `__contains__` / `__iter__` / `__getitem__`。是协议不是接口——不用继承,有方法就认(鸭子类型地基) | ⬜ |
+| 7 | 没定义 `__contains__` 时,`x in obj` 会怎样? | 不报错,退化成用 `__iter__` 逐个比对(O(n))。定义了 `__contains__` 才走 O(1) 查找 | ⬜ |
+| 8 | 构造函数收到外部 dict/list,为什么要先 `dict(stock)` 拷一份? | 防御性拷贝(≈ Java `new HashMap<>(m)`):不拷的话,外部事后改原容器会「隔山打牛」改到你的内部状态 | ⬜ |
+| 9 | `__add__` 的两条契约?对不认识的类型该返回什么? | ① 返回【新对象】,不改 self/other;② 不认识的类型返回 `NotImplemented`(不是抛异常!)——Python 会再试对方反向方法,都不行才抛 TypeError | ⬜ |
+| 10 | Python 里只定义 `__eq__` 不定义 `__hash__` 会发生什么? | `__hash__` 被自动置 None → 实例**不可哈希**,set/dict key 全废。≈ Java「重写 equals 必须重写 hashCode」,但 Python 是强制的。解:`__hash__ = hash(参与判等的字段)`,与 `__eq__` 保持一致 | ⬜ |
+| 11 | `__repr__` 和 `__str__` 分工?只定义一个定义谁? | `__repr__` 给程序/调试看(无歧义,理想可 eval);`__str__` 给人看(print)。只定义 `__repr__`——没 `__str__` 时 print 拿它兜底。≈ Java 只有一个 toString() | ⬜ |
+| 12 | 子类覆盖父类的 `@property`,怎么复用父类的计算? | `super().total`(在子类 property 里拿父类同名 property 的值)。`super()` 无参 = 自动填当前类+self;`super().__init__()` 先初始化父类部分 | ⬜ |
+| 13 | Python 有方法重载吗?多继承的方法查找顺序是什么? | **没有重载**,后定义覆盖前定义,可选参数用默认值。多继承查找顺序 = **MRO**(C3 线性化),`Cls.__mro__` 可查;工程上单继承+组合优先 | ⬜ |
 
 ## 🎓 费曼自检(复习时口头说一遍)
 
-- [ ] 能说清「魔术方法让自定义类支持 len/in/+,Java 为什么没有」?
-- [ ] 能说清「@property 让 cart.total 不带括号,原理是什么」?
-- [ ] 能说清「super() 复用父类、子类覆盖父类」?
+- [ ] 能说清「魔术方法让自定义类支持 len/in/+/[],和 Java implements 接口的本质区别」?
+- [ ] 能说清「定义 `__eq__` 后 `__hash__` 去哪了,为什么要手写回来」?
+- [ ] 能说清「类属性 vs 实例属性」的坑,以及 `@property` 为什么不带括号?
 
 ## 📅 复习日程
 
