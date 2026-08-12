@@ -10,18 +10,25 @@
 
 | # | 正面(问题) | 背面(答案) | 掌握 |
 |---|------------|------------|------|
-| 1 | 哈希表怎么把 O(n²) 降到 O(n)?一句话。 | 把「找一个东西在不在」从 O(n) 线性扫,换成 O(1) 哈希查询。**以查询换遍历。** | ⬜ |
-| 2 | LC1 `two_sum` 的核心一行?为什么不能先全存 dict 再查? | 边扫边查:`if (target-num) in seen: return [seen[..], i]`。先全存会允许「同元素用两次」(如下标自己加自己),且要多一次下标判断。 | ⬜ |
-| 3 | `group_anagrams` 用什么作 key?为什么? | `"".join(sorted(word))`——异位词的字符排序后序列相同。`defaultdict(list)` 聚合同 key 词。 | ⬜ |
-| 4 | `defaultdict(list)` 替代了 Java 的什么样板? | `computeIfAbsent(k, k->new ArrayList<>())`。普通 dict 要先 `if k not in d: d[k]=[]` 再 append,defaultdict 自动建空 list。 | ⬜ |
-| 5 | LC560 前缀和公式?为什么 dict 初始要塞 `{0:1}`? | `prefix[j]-prefix[i]=k` ⟺ `prefix[i]=prefix[j]-k`。`{0:1}` 表示空前缀出现过一次,**否则从下标 0 开始的子数组(整个前缀本身就是 k)会全部漏数。** | ⬜ |
-| 6 | `subarray_sum` 为什么不能像 Ch35 滑动窗口? | nums 可含**负数**,前缀和不单调——缩窗不一定让和变小、扩窗不一定变大,滑窗失效。哈希前缀和是通用解。 | ⬜ |
-| 7 | `subarray_sum` 一句话实现(关键三步)? | `{0:1}` 起手;每步 `cur+=num`;**先查** `count+=pc.get(cur-k,0)` **后登记** `pc[cur]=pc.get(cur,0)+1`。顺序不能反。 | ⬜ |
-| 8 | LC128 `longest_consecutive` 为什么不排序?为什么只从「起点」数? | 排序 O(n log n),题目要 O(n)。只从 `n-1 not in set` 的元素开始数(它才是序列最小值),其它元素会被对应起点的 while 覆盖到,跳过避免重复——整体 O(n)。 | ⬜ |
-| 9 | `longest_consecutive` 为什么是 O(n)?内层 while 不是 O(n) 吗? | 每个元素**最多被一个起点对应的 while 访问一次**(非起点都 `continue` 了),内层 while 总次数 ≤ n。O(n)+O(n)=O(n)。 | ⬜ |
-| 10 | Python dict 安全取值 / 判键 / 自动默认值,分别怎么写? | 取值带默认:`d.get(k, default)`;判键:`k in d`;自动默认:`defaultdict(list/int)`。对应 Java `getOrDefault` / `containsKey` / `computeIfAbsent`。 | ⬜ |
-| 11 | list 能当 dict 的 key 吗?异位词 key 怎么处理? | 不能,list 可变不可哈希。要 `"".join(sorted(word))` 拼成 str,或 `tuple(sorted(word))`。 | ⬜ |
-| 12 | 这章四题里 dict 分别扮演什么角色? | two_sum:值→下标 map;group_anagrams:group-by 聚合;subarray_sum:频次表;longest_consecutive:set 成员查询。四种截然不同的用法。 | ⬜ |
+| 1 | 哈希表怎么把 O(n²) 降到 O(n)?一句话。 | 把「找一个东西在不在」从 O(n) 线性扫换成 O(1) 哈希查询。**以查询换遍历。** | ⬜ |
+| 2 | LC242 `is_anagram` 的一行实现?为什么不能用 `set`? | `Counter(s) == Counter(t)`。`set` 只存「有没有」不存「几次」——`"aab"` vs `"abb"` 种类相同会被误判 True。 | ⬜ |
+| 3 | `Counter` 的 `&` / `\|` 能当判等用吗? | 不能。`&` 是交集(次数取 min)、`\|` 是并集(取 max)。判等只有 `==`(dict 子类按键值全等)。 | ⬜ |
+| 4 | LC1 `two_sum` 的核心循环?为什么不能先全存 dict 再查? | 边扫边查:`if (target-num) in seen: return [seen[..], i]`,否则登记 `seen[num]=i`。先全存会允许「同元素用两次」(`[3,2,4],6` 错答 `[0,0]`)。 | ⬜ |
+| 5 | `two_sum` 里「先查后登记」的顺序为什么重要? | 查的必须是「历史已扫过的」,当前 i 还没登记,天然保证两个下标不同;反了会把同元素用两次。 | ⬜ |
+| 6 | LC49 `group_anagrams` 的 key 是什么?为什么不能直接用 sorted 的结果? | `"".join(sorted(word))`(异位词排序后序列相同,如都成 `"aet"`)。sorted 返回 list,可变、不可哈希,直接当 key 会 `TypeError: unhashable`。 | ⬜ |
+| 7 | `defaultdict(list)` 替代了 Java 的什么样板? | `computeIfAbsent(k, k->new ArrayList<>())`。普通 dict 要先 `if k not in d: d[k]=[]` 再 append;defaultdict 把「默认值」声明在创建处,直接 append。 | ⬜ |
+| 8 | LC560 前缀和等式?dict 存什么? | `prefix[j]-prefix[i]=k` ⟺ `prefix[i]=prefix[j]-k`。dict 存 `{前缀和: 出现次数}`,每步 `count += pc.get(cur-k, 0)`。 | ⬜ |
+| 9 | `subarray_sum` 为什么 dict 初始要塞 `{0: 1}`? | 表示「前缀和 0 出现过一次(空前缀)」。不预置会漏掉**从下标 0 开始、整个前缀和就是 k** 的子数组(如 `[5],k=5` 错答 0)。 | ⬜ |
+| 10 | `subarray_sum` 为什么必须「先查后登记」?反例? | 先登记会把当前位置自己数进去(空子数组)。反例:`[0],k=0`,先登记使 `pc[0]=2`,再查 `cur-k=0` 数出 2(正确 1)。 | ⬜ |
+| 11 | LC560 为什么不能像 Ch35 那样滑动窗口? | nums 可含**负数**,前缀和不单调——缩窗不一定让和变小、扩窗不一定变大,滑窗失效。哈希前缀和是通用解。 | ⬜ |
+| 12 | LC525 `find_max_length` 的关键变换是什么? | **0→-1**:「0 和 1 个数相等」⟺「子数组和为 0」⟺ 两处前缀和相等。 | ⬜ |
+| 13 | LC525 的 dict 存什么?为什么只记最早、绝不覆盖? | `{前缀和: 最早下标}`。求「最长」要 `i - first[cur]` 最大,下标越早越长;覆盖后 `[0,1]` 会错算成 0。 | ⬜ |
+| 14 | LC525 初始为什么是 `{0: -1}` 而不是 `{0: 1}`? | 这题算长度,空前缀的「下标」是 -1:从下标 0 起平衡时长 = `i-(-1) = i+1`。560 数次数所以是 `{0: 1}`。没有它 `[1,0,1,0]` 错答 2(正确 4)。 | ⬜ |
+| 15 | LC128 `longest_consecutive` 为什么不排序?为什么只从「起点」数? | 排序 O(n log n),题目要 O(n)。只从 `n-1 not in set` 的元素(序列最小值)开始数,其它元素会被对应起点的 while 覆盖,跳过避免重复。 | ⬜ |
+| 16 | `longest_consecutive` 内层 while 为什么不让复杂度退化成 O(n²)?起点方向反了会怎样? | 每个元素最多被一个起点的 while 访问一次,总次数 ≤ n,整体 O(n)。方向反了(`n+1 not in set` 是终点)从终点往大数永远长 1,`[1,2,3]` 错答 1。 | ⬜ |
+| 17 | 前缀和两兄弟(560/525)同一骨架,价值量(value)和初始项分别是什么? | 数「个数」→ value=次数、初始 `{0:1}`;求「最长」→ value=最早下标、初始 `{0:-1}`。前缀和题先想 value 语义。 | ⬜ |
+| 18 | 本章 6 题里 dict/set 各扮演什么角色? | Counter 计数指纹(242)/ `{值:下标}` 查表(1)/ `defaultdict` 分组(49)/ `{前缀和:次数}`(560)/ `{前缀和:最早下标}`(525)/ set 成员查询(128)。 | ⬜ |
+| 19 | Python dict 安全取值 / 判键 / 自动默认值,分别怎么写?对应 Java? | `d.get(k, default)` / `k in d` / `defaultdict(list\|int)` ↔ `getOrDefault` / `containsKey` / `computeIfAbsent`。 | ⬜ |
 
 ---
 
@@ -29,11 +36,12 @@
 
 合上教程,用自己的话讲清下面几点(讲不清就回去重读对应小节):
 
-1. **哈希表降维套路**:拿 `two_sum` 当例子,讲清暴力 O(n²) 怎么变成 O(n),dict 里存什么、查什么。
-2. **`{0:1}` 玄机**:为什么前缀和题必须预置 `{0:1}`?举 `nums=[5], k=5` 讲漏数的情况。
-3. **`longest_consecutive` 的 O(n)**:为什么内层 while 不让复杂度退化成 O(n²)?
+1. **哈希表降维套路**:拿 `two_sum` 当例子,讲清暴力 O(n²) 怎么变成 O(n),dict 里存什么、查什么、为什么先查后登记。
+2. **`{0:1}` vs `{0:-1}`**:为什么 560 预置 `{0:1}`、525 预置 `{0:-1}`?各举一个不预置会错的例子(`[5],k=5` 和 `[1,0,1,0]`)。
+3. **560 vs 525 同骨架异 value**:同一个「前缀和+哈希」骨架,为什么一个 dict 存次数、一个存最早下标?
+4. **`longest_consecutive` 的 O(n)**:为什么内层 while 不让复杂度退化成 O(n²)?
 
-讲得磕巴 → 重读 §36.1 / §36.4 / §36.5。
+讲得磕巴 → 重读 §36.3 / §36.5 / §36.6 / §36.7。
 
 ---
 
@@ -54,6 +62,7 @@
 
 ## 🔗 相关章节
 
-- 前置:Ch34(Python 刷题利器:`defaultdict`/`Counter`/`set`)、Ch35(双指针/滑动窗口——本章 §36.4 对比了为啥不能用滑窗)
+- 前置:Ch34(`Counter`/`defaultdict`/`set` 工具箱)、Ch35(双指针/滑动窗口——本章 §36.5 对比了为啥有负数不能滑窗)
 - 下一章:Ch37(栈/队列/单调栈——另一种「维护顺序」的数据结构)
+- 延伸阅读:LC974(前缀和 + 取余)、LC523(缝合「次数」和「最早下标」两种 value 语义)
 - 总览:[`../../REVIEW.md`](../../REVIEW.md)

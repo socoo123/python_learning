@@ -156,49 +156,49 @@ cd web && bun run build:content
 
 | 章 | 标题 | 状态 |
 |---|---|---|
-| Ch13 | HTTP 客户端：httpx 调用 API | ⬜ |
-| Ch14 | FastAPI 入门：第一个 API + Pydantic 模型 | ⬜ |
-| Ch15 | 路由参数：路径参数 / 查询参数 / 分页 | ⬜ |
-| Ch16 | 依赖注入系统（Depends） | ⬜ |
-| Ch17 | 中间件、CORS、异常处理 | ⬜ |
-| Ch18 | 异步编程 async/await | ⬜ |
-| Ch19 | 数据库 ORM：SQLAlchemy 2.0 | ⬜ |
-| Ch20 | 测试 API 进阶（TestClient + fixtures + 覆盖率） | ⬜ |
-| Ch21 | 认证授权 JWT | ⬜ |
-| Ch22 | 部署：uvicorn / gunicorn / Docker + 框架对比 | ⬜ |
+| Ch13 | HTTP 客户端：httpx 调用 API | ✅ 2026-08-12 |
+| Ch14 | FastAPI 入门：第一个 API + Pydantic 模型 | ✅ 2026-08-12 |
+| Ch15 | 路由参数：路径参数 / 查询参数 / 分页 | ✅ 2026-08-12 |
+| Ch16 | 依赖注入系统（Depends） | ✅ 2026-08-12 |
+| Ch17 | 中间件、CORS、异常处理 | ✅ 2026-08-12 |
+| Ch18 | 异步编程 async/await | ✅ 2026-08-12 |
+| Ch19 | 数据库 ORM：SQLAlchemy 2.0 | ✅ 2026-08-12 |
+| Ch20 | 测试 API 进阶（TestClient + fixtures + 覆盖率） | ✅ 2026-08-12 |
+| Ch21 | 认证授权 JWT | ✅ 2026-08-12 |
+| Ch22 | 部署：uvicorn / gunicorn / Docker + 框架对比 | ✅ 2026-08-12 |
 
 ### M4 运维脚本（`04_devops_scripts/`，Ch23/25/26 Pyodide；Ch24/27 Local）
 
 | 章 | 标题 | 状态 |
 |---|---|---|
-| Ch23 | 文件系统批量操作：pathlib / shutil | ⬜ |
-| Ch24 | 进程与子进程管理：subprocess / psutil | ⬜ |
-| Ch25 | CLI 工具开发：Typer + Rich | ⬜ |
-| Ch26 | 定时任务与日志分析：schedule + 聚合告警 | ⬜ |
-| Ch27 | 配置管理与系统监控：psutil 巡检 + webhook 告警 | ⬜ |
+| Ch23 | 文件系统批量操作：pathlib / shutil | ✅ 2026-08-12 |
+| Ch24 | 进程与子进程管理：subprocess / psutil | ✅ 2026-08-12 |
+| Ch25 | CLI 工具开发：Typer + Rich | ✅ 2026-08-12 |
+| Ch26 | 定时任务与日志分析：schedule + 聚合告警 | ✅ 2026-08-12 |
+| Ch27 | 配置管理与系统监控：psutil 巡检 + webhook 告警 | ✅ 2026-08-12 |
 
 ### M5 AI 框架（`05_ai_framework/`，全 Local）
 
 | 章 | 标题 | 状态 |
 |---|---|---|
-| Ch28 | LLM SDK 调用：Anthropic / OpenAI | ⬜ |
-| Ch29 | Prompt 工程与结构化输出 | ⬜ |
-| Ch30 | LangChain 基础：LCEL | ⬜ |
-| Ch31 | RAG 实战：向量检索 | ⬜ |
-| Ch32 | Agent 开发：Tool Use / ReAct | ⬜ |
-| Ch33 | 用 FastAPI 封装 AI 服务 | ⬜ |
+| Ch28 | LLM SDK 调用：Anthropic / OpenAI | ✅ 2026-08-12 |
+| Ch29 | Prompt 工程与结构化输出 | ✅ 2026-08-12 |
+| Ch30 | LangChain 基础：LCEL | ✅ 2026-08-12 |
+| Ch31 | RAG 实战：向量检索 | ✅ 2026-08-12 |
+| Ch32 | Agent 开发：Tool Use / ReAct | ✅ 2026-08-12 |
+| Ch33 | 用 FastAPI 封装 AI 服务 | ✅ 2026-08-12 |
 
 ### M6 LeetCode（`06_leetcode/`，Pyodide）
 
 | 章 | 标题 | 状态 |
 |---|---|---|
-| Ch34 | Python 刷题利器总览（stdlib 五件套） | ⬜ |
-| Ch35 | 双指针 / 滑动窗口 | ⬜ |
-| Ch36 | 哈希表 / 前缀和 | ⬜ |
-| Ch37 | 栈 / 队列 / 单调栈 | ⬜ |
-| Ch38 | 二叉树 / DFS / BFS | ⬜ |
-| Ch39 | 动态规划 | ⬜ |
-| Ch40 | 回溯 / 贪心 + 综合 | ⬜ |
+| Ch34 | Python 刷题利器总览（stdlib 工具箱） | ✅ 2026-08-12 |
+| Ch35 | 双指针 / 滑动窗口 | ✅ 2026-08-12 |
+| Ch36 | 哈希表 / 前缀和 | ✅ 2026-08-12 |
+| Ch37 | 栈 / 队列 / 单调栈 | ✅ 2026-08-12 |
+| Ch38 | 二叉树 / DFS / BFS | ✅ 2026-08-12 |
+| Ch39 | 动态规划 | ✅ 2026-08-12 |
+| Ch40 | 回溯 / 贪心 + 综合 | ✅ 2026-08-12 |
 
 ---
 

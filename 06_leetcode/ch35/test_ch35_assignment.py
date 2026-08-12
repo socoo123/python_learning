@@ -6,13 +6,15 @@ import pytest
 from ch35_assignment import (
     length_of_longest_substring,
     max_area,
+    min_sub_array_len,
     min_window,
+    move_zeroes,
     three_sum,
     two_sum_sorted,
 )
 
 
-# ---------- two_sum_sorted(原型,辅助理解对撞双指针) ----------
+# ---------- two_sum_sorted(§35.2 对撞双指针原型) ----------
 class TestTwoSumSorted:
     def test_found(self):
         assert two_sum_sorted([1, 2, 3, 4, 6], 6) == [2, 4]
@@ -26,12 +28,50 @@ class TestTwoSumSorted:
     def test_empty(self):
         assert two_sum_sorted([], 0) is None
 
+    def test_single_element(self):
+        assert two_sum_sorted([5], 5) is None  # 一个数构不成 pair
+
     def test_negative_numbers(self):
         # -1 + 2 == 1(且这是唯一和为 1 的对)
         assert two_sum_sorted([-3, -2, -1, 2, 5], 1) == [-1, 2]
 
 
-# ---------- max_area(LC11) ----------
+# ---------- move_zeroes(§35.3 快慢指针,LC283) ----------
+class TestMoveZeroes:
+    def test_leetcode_example(self):
+        assert move_zeroes([0, 1, 0, 3, 12]) == [1, 3, 12, 0, 0]
+
+    def test_all_zero(self):
+        assert move_zeroes([0, 0, 0]) == [0, 0, 0]
+
+    def test_no_zero(self):
+        assert move_zeroes([1, 2, 3]) == [1, 2, 3]
+
+    def test_empty(self):
+        assert move_zeroes([]) == []
+
+    def test_single_zero(self):
+        assert move_zeroes([0]) == [0]
+
+    def test_single_nonzero(self):
+        assert move_zeroes([1]) == [1]
+
+    def test_zeros_front(self):
+        assert move_zeroes([0, 0, 1]) == [1, 0, 0]
+
+    def test_mixed_long(self):
+        # LeetCode 经典例:非零相对顺序必须保持
+        assert move_zeroes([4, 2, 4, 0, 0, 3, 0, 5, 1, 0]) == [4, 2, 4, 3, 5, 1, 0, 0, 0, 0]
+
+    def test_in_place(self):
+        # 关键区分项:必须【原地】修改传入的 list(返回新数组的写法过不了)
+        nums = [0, 1, 0, 3]
+        result = move_zeroes(nums)
+        assert result is nums
+        assert nums == [1, 3, 0, 0]
+
+
+# ---------- max_area(§35.4 对撞 + 贪心,LC11) ----------
 class TestMaxArea:
     def test_leetcode_example(self):
         assert max_area([1, 8, 6, 2, 5, 4, 8, 3, 7]) == 49
@@ -43,7 +83,7 @@ class TestMaxArea:
         assert max_area([4, 3, 2, 1, 4]) == 16
 
     def test_ascending(self):
-        # 全程右端更高,左端一路推进;最优:line2(3)和line5(6) → 宽3*min(3,6)=9
+        # 最优:line2(3)和line5(6) → 宽3*min(3,6)=9
         assert max_area([1, 2, 3, 4, 5, 6]) == 9
 
     def test_descending(self):
@@ -57,7 +97,7 @@ class TestMaxArea:
         assert max_area([100, 1, 1, 1, 100]) == 400  # 宽4 * min(100,100)
 
 
-# ---------- length_of_longest_substring(LC3) ----------
+# ---------- length_of_longest_substring(§35.5 滑窗 + set,LC3) ----------
 class TestLengthOfLongestSubstring:
     def test_leetcode1(self):
         assert length_of_longest_substring("abcabcbb") == 3
@@ -90,8 +130,44 @@ class TestLengthOfLongestSubstring:
     def test_space_and_letters(self):
         assert length_of_longest_substring("ab c") == 4  # 含空格不重复
 
+    def test_while_not_if(self):
+        # 区分「while 收缩」与「if 收缩」:第二个 b 出现时需连吐 2 个字符
+        # if 写法会在 idx3 残留一个 b,后续 best 被算小
+        assert length_of_longest_substring("abba") == 2  # "ab" 或 "ba"
 
-# ---------- three_sum(LC15) ----------
+
+# ---------- min_sub_array_len(§35.6 滑窗求最短,LC209) ----------
+class TestMinSubArrayLen:
+    def test_leetcode_example(self):
+        assert min_sub_array_len(7, [2, 3, 1, 2, 4, 3]) == 2  # [4,3]
+
+    def test_single_element_enough(self):
+        assert min_sub_array_len(4, [1, 4, 4]) == 1
+
+    def test_not_possible(self):
+        assert min_sub_array_len(11, [1, 1, 1, 1, 1, 1, 1, 1]) == 0
+
+    def test_whole_array(self):
+        assert min_sub_array_len(15, [1, 2, 3, 4, 5]) == 5
+
+    def test_big_element_at_end(self):
+        assert min_sub_array_len(5, [1, 1, 1, 1, 10]) == 1  # [10]
+
+    def test_empty(self):
+        assert min_sub_array_len(100, []) == 0
+
+    def test_sum_below_target(self):
+        assert min_sub_array_len(3, [1, 1]) == 0
+
+    def test_first_element_alone(self):
+        assert min_sub_array_len(6, [10, 2, 3]) == 1  # [10]
+
+    def test_exact_window_middle(self):
+        # 所有 len<4 的窗口和都 < 8;[1,2,3,2] 和 [2,3,2,1] 恰好 = 8
+        assert min_sub_array_len(8, [1, 2, 3, 2, 1]) == 4
+
+
+# ---------- three_sum(§35.7 排序 + 对撞 + 两处去重,LC15) ----------
 class TestThreeSum:
     def test_leetcode_example(self):
         assert three_sum([-1, 0, 1, 2, -1, -4]) == [[-1, -1, 2], [-1, 0, 1]]
@@ -111,7 +187,6 @@ class TestThreeSum:
     def test_duplicates_removed(self):
         # 多个 -1 / 0 / 1 不应产生重复三元组
         result = three_sum([-1, -1, -1, 0, 0, 0, 1, 1, 1])
-        # 真实期望:[[-1,0,1],[0,0,0]]
         assert result == [[-1, 0, 1], [0, 0, 0]]
 
     def test_negative_and_positive(self):
@@ -123,8 +198,12 @@ class TestThreeSum:
     def test_all_positive(self):
         assert three_sum([1, 2, 3, 4, 5]) == []
 
+    def test_repeated_first_value(self):
+        # 首数重复:去重①和 i-1 比;误写成和 i+1 比会漏掉 [-1,-1,2]
+        assert three_sum([-1, -1, 2]) == [[-1, -1, 2]]
 
-# ---------- min_window(LC76) ----------
+
+# ---------- min_window(§35.8 滑窗 + Counter,LC76 Hard) ----------
 class TestMinWindow:
     def test_leetcode_example(self):
         assert min_window("ADOBECODEBANC", "ABC") == "BANC"
@@ -145,12 +224,11 @@ class TestMinWindow:
         assert min_window("aab", "ab") == "ab"
 
     def test_repeated_need(self):
-        # t 要两个 A。s = A D O B E C O D E B A N C, A 出现在 idx0 和 idx10
+        # t 要两个 A。s = A D O B E C O D E B A N C, A 在 idx0 和 idx10
         # 两个 A 之间的最短窗口即 [0..10]="ADOBECODEBA"
         assert min_window("ADOBECODEBANC", "AA") == "ADOBECODEBA"
 
     def test_t_empty(self):
-        # t 为空通常约定返回 ""(无需求)
         assert min_window("abc", "") == ""
 
     def test_s_empty(self):

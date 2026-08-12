@@ -112,7 +112,7 @@
         {
           "id": "ch15",
           "num": "15",
-          "title": "路由参数:路径参数 / 查询参数 / 分页",
+          "title": "路由参数:路径参数 / 查询参数 / 分页排序",
           "runMode": "local"
         },
         {
@@ -154,7 +154,7 @@
         {
           "id": "ch22",
           "num": "22",
-          "title": "部署:uvicorn / gunicorn / Docker + 框架对比",
+          "title": "部署：uvicorn / gunicorn / Docker + 框架对比",
           "runMode": "local"
         }
       ]
@@ -208,7 +208,7 @@
         {
           "id": "ch28",
           "num": "28",
-          "title": "LLM SDK 调用:Anthropic / OpenAI",
+          "title": "LLM SDK 调用：Anthropic / OpenAI",
           "runMode": "local"
         },
         {
@@ -232,7 +232,7 @@
         {
           "id": "ch32",
           "num": "32",
-          "title": "Agent 开发:Tool Use / ReAct",
+          "title": "Agent 开发：Tool Use / ReAct",
           "runMode": "local"
         },
         {
@@ -253,7 +253,7 @@
         {
           "id": "ch34",
           "num": "34",
-          "title": "Python 刷题利器总览(stdlib 五件套)",
+          "title": "Python 刷题利器总览(stdlib 工具箱)",
           "runMode": "pyodide"
         },
         {

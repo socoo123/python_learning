@@ -1,200 +1,316 @@
 # Ch36 · 哈希表 / 前缀和
 
-> **预计**:1 天 ｜ **前置**:Ch34(Pythonic 刷题利器)、Ch35(双指针/滑动窗口)｜ **M6 重点**
-> **目标**:掌握哈希表把 **O(n²) 暴力降到 O(n)** 的核心套路。Python 用 `dict` / `defaultdict` / `Counter` 一行初始化;Java 要 `new HashMap<>()` 反复 `put`/`get`/`containsKey`。
+> **预计**:1 天 ｜ **前置**:Ch34(stdlib 工具箱:`Counter`/`defaultdict`)、Ch35(双指针/滑动窗口)｜ **M6 重点**
+> **目标**:掌握哈希表把 **O(n²) 暴力降到 O(n)** 的核心套路——「以查询换遍历」。Python 用 `dict` / `defaultdict` / `Counter` / `set` 一行初始化;Java 要 `new HashMap<>()` 反复 `put`/`get`/`containsKey`。本章 6 道 LeetCode 经典题,覆盖哈希表的 **6 种角色**:计数指纹 → 查表 → 分组聚合 → 频次表 → 最早下标 → 成员查询。
 
-> 📐 **本教程的契约**:§36.2–§36.5 对应作业 4 个函数,**纯 stdlib**(`collections.defaultdict`),不 import 外部库。
+> 📐 **本教程的契约**:§36.2–§36.7 每节**精确对应**作业里的一个函数,讲过的才考,考的必讲过。§36.1 是开胃、§36.8/§36.9 是总结与坑清单,讲透不出题。卡住时按对应表回查小节。
 
 ---
 
-## 🗺️ 本章地图:作业 ↔ 知识点对应表
+## 🗺️ 本章地图
+
+读完这章 + 完成作业,你将能够:
+- 用 `Counter(s) == Counter(t)` 一行判异位词,说清为什么 `set` 会蒙混过关
+- 用「边扫边查」写 `two_sum`,说清为什么不能先全存 dict 再查
+- 用 `defaultdict(list)` + `"".join(sorted(word))` 做分组聚合
+- 用「前缀和 + `{前缀和: 次数}`」数出和为 k 的子数组,记住 `{0: 1}` 预置的玄机
+- 用「0→-1 变换 + `{前缀和: 最早下标}`」求最长平衡子数组,说出它和上一题 dict 里存的东西有何不同
+- 用 `set` + 「只从序列起点数」把 LC128 做到 O(n)
+
+**作业 ↔ 教程对应表**(学哪节,就去做哪题):
 
 | 作业(函数) | 对应小节 | 核心知识点 | LC 题号 |
 |------|----------|-----------|---------|
-| `two_sum` | §36.2 | 哈希查 complement,O(n) 一次遍历 | LC1 |
-| `group_anagrams` | §36.3 | 排序后的字符串作 key + `defaultdict(list)` 聚合 | LC49 |
-| `subarray_sum` | §36.4 | 前缀和 + 哈希记次数,`{0:1}` 初始项的玄机 | LC560 |
-| `longest_consecutive` | §36.5 | `set` 去重,只从「序列起点」开始数 | LC128 |
+| `is_anagram` | §36.2 | `Counter` 计数指纹判异位词 | LC242 |
+| `two_sum` | §36.3 | dict `{值: 下标}`,边扫边查(先查后登记) | LC1 |
+| `group_anagrams` | §36.4 | 排序 key + `defaultdict(list)` 聚合 | LC49 |
+| `subarray_sum` | §36.5 | 前缀和 + `{前缀和: 次数}`,`{0: 1}` 预置 | LC560 |
+| `find_max_length` | §36.6 | 0→-1 变换 + `{前缀和: 最早下标}`,只记最早 | LC525 |
+| `longest_consecutive` | §36.7 | `set` 成员查询,只从「序列起点」开始数 | LC128 |
 
 ---
 
-## ⏱️ 学习路径:费曼五步(约 60 分钟)
+## ⏱️ 学习路径:费曼五步(约 70 分钟)
 
-① **预览猜** → ② **写 assignment** → ③ **pytest 红绿** → ④ **费曼(对空气讲一遍)** → ⑤ **存闪卡**。
+| 步 | 你要做 | 在哪做 |
+|----|--------|--------|
+| ① 预览猜(3分钟) | 下面 6 个问题,先猜答案 | 本页 ① |
+| ② 先动手 | 打开 `ch36_assignment.py`,**先试着写**(别看教程) | assignment |
+| ③ 提取+反馈 | 凭记忆写完 → `uv run pytest` 红绿 | test |
+| ④ 费曼(2分钟) | 大白话讲清「哈希表以查询换遍历」 | 本页 ④ |
+| ⑤ 存闪卡 | 把 [`review.md`](./review.md) 的卡标复习日期 | review.md |
 
-每道题:先猜思路 → 看本节 → 默写实现 → 跑测试 → 合上教程讲一遍「为什么这么做」。
-
----
-
-## ① 预览猜(先别看答案)
-
-1. `two_sum`:给你一个数组和一个 target,找两个数的下标使它们之和 = target。暴力双循环 O(n²)。能不能只扫一遍?
-2. `group_anagrams`:把「字母相同、顺序不同」的单词归到一组(`eat/tea/ate` 一组)。怎么给每个词算一个「分组指纹」?
-3. `subarray_sum`:数一数有多少个**连续子数组**之和 = k。前缀和 `prefix[j]-prefix[i] = k` 那个等式怎么用?为什么不能像 Ch35 那样滑窗?
-4. `longest_consecutive`:找最长连续整数序列的长度(`1,2,3,4` 长 4)。排序是 O(n log n),能不能 O(n)?关键是「从哪开始数」?
-
-想完再往下看。
+> 💡 **直接性原则**:别通读!先猜 ① → 去 ② 写作业 → **哪题卡了,回对应 § 查** → 改 → 再跑。
 
 ---
 
-## §36.1 哈希表的「降维」威力(讲透)🟢
+## ① 预览猜(先想,别急着翻答案)
 
-哈希表(`dict` / `HashMap`)的杀手锏:**把「找一个东西在不在」从 O(n) 线性扫,降到 O(1) 平均**。
+1. 判断两个单词是不是「字母异位词」(`anagram`/`nagaram`)——Java 排序 char 数组再 `Arrays.equals`,Python 能不能一行?用 `set` 判为什么会被 `"aab"` vs `"abb"` 打脸?
+2. `two_sum`:找两个数的下标使其和 = target。暴力双循环 O(n²),只扫一遍怎么做?为什么不能先把所有数存进 dict 再查?
+3. `group_anagrams`:给每个词算一个「分组指纹」把异位词聚到一起。指纹用什么?sorted 出来的 list 能直接当 dict 的 key 吗?
+4. `subarray_sum`:数有多少个**连续子数组**和 = k。前缀和等式 `prefix[j] - prefix[i] = k` 怎么变成一次 O(1) 查询?为什么 dict 初始要塞 `{0: 1}`?
+5. `find_max_length`:0 和 1 个数相等的最长连续子数组。把 0 换成什么就能套用上一题的前缀和?这题 dict 里存的为什么不是「次数」而是「最早下标」?
+6. `longest_consecutive`:不准排序(O(n log n)),怎么 O(n) 找最长连续整数序列?为什么「只从起点开始数」就不会退化成 O(n²)?
 
-很多题的暴力解都是嵌套循环「外层固定一个、内层再找一个匹配的」→ O(n²)。一旦你意识到「内层那个查找」可以用哈希表 O(1) 完成,整个算法就降到 **O(n)**。本章四题全是这个套路的不同变体:
-
-| 题 | 暴力 | 哈希优化 | 关键洞察 |
-|----|------|----------|----------|
-| two_sum | 双循环 O(n²) | dict 查 complement | `target - num` 在不在已扫过的里 |
-| group_anagrams | 两两比较 O(n²·L) | dict 按 key 聚合 | 异位词的「规范形式」相同 |
-| subarray_sum | 枚举所有子数组 O(n²) | dict 记前缀和次数 | `prefix[j]-prefix[i]=k` ⟺ `prefix[i]=prefix[j]-k` |
-| longest_consecutive | 排序 O(n log n) | set O(1) 查 | 只从「起点」数,不重复 |
-
-> 🟢 **Java 老手秒懂**:`HashMap<Integer,Integer> map = new HashMap<>();` → `map.put(k,v)` / `map.get(k)` / `map.containsKey(k)`。Python 对应 `d = {}` → `d[k] = v` / `d.get(k)` / `k in d`。**零样板**——没有泛型尖括号,没有 `.containsKey`,直接 `in`。
-
-> 🔴 **Python 特有**:
-> - `defaultdict(list)`——不存在的 key 自动建空 list,省掉「先 `if k not in d: d[k]=[]` 再 append」三行。
-> - `Counter`——`Counter([1,1,2])` 一行出 `{1:2, 2:1}`(本章 §36.3 也会用到)。
-> - `dict.get(k, default)`——键不存在时返回 default,**不会抛 KeyError**,这在前缀和题里极其顺手。
-> - 字典推导 `{k: f(v) for k,v in d.items()}`、3.7+ 保证插入顺序(本章不强依赖顺序)。
+> 猜完带着验证心态进入正文。第 4、5 题是 🔴(前缀和 + 哈希组合),是本章最值钱的套路。
 
 ---
 
-## §36.2 LC1 两数之和 `two_sum`(对应)🟢
+## §36.1 总览:哈希表的「降维」套路(不出题)🟡
 
-> **题面**:给定整数数组 `nums` 和整数 `target`,返回和为 `target` 的两个元素的下标。题面保证恰好有一个解,同一元素不能重复用。
+哈希表的杀手锏:**把「找一个东西在不在」从 O(n) 线性扫,降到 O(1) 平均**。
 
-### 为什么这么做(讲透)
+很多题的暴力解都是嵌套循环:「外层固定一个、内层再找一个匹配的」→ O(n²)。一旦你意识到「内层那个查找」可以用哈希表 O(1) 完成,整个算法就降到 **O(n)**。本章 6 题全是这个套路的变体:
+
+| 题 | 暴力 | 哈希优化 | dict / set 的角色 |
+|----|------|----------|------------------|
+| is_anagram (LC242) | 排序比较 O(L log L) | `Counter` 一行 | **计数指纹** |
+| two_sum (LC1) | 双循环 O(n²) | dict 查 complement | **查表** `{值: 下标}` |
+| group_anagrams (LC49) | 两两比较 O(n²·L) | dict 按 key 聚合 | **分组** `{指纹: [词...]}` |
+| subarray_sum (LC560) | 枚举所有子数组 O(n²) | dict 记前缀和次数 | **频次表** `{前缀和: 次数}` |
+| find_max_length (LC525) | 枚举所有子数组 O(n²) | dict 记前缀和最早下标 | **最值索引** `{前缀和: 最早下标}` |
+| longest_consecutive (LC128) | 排序 O(n log n) | set O(1) 查 | **成员查询** |
+
+### Java 对照最小例
+
+```java
+// Java:每用一次哈希表都是一套样板
+Map<Integer, Integer> map = new HashMap<>();
+map.put(k, v);
+if (map.containsKey(k)) { ... }
+Integer cnt = map.getOrDefault(k, 0);
+map.merge(k, 1, Integer::sum);
+```
+
+```python
+# Python:字面量 + in + get,零样板
+d = {}
+d[k] = v
+if k in d: ...
+d.get(k, 0)                     # 不存在给默认值,不抛 KeyError
+```
+
+> 🔴 **Python 特有**(Ch08/Ch34 学过,本章全程在用):
+> - `defaultdict(list)` / `defaultdict(int)`——不存在的 key 自动建默认值,省掉「先判 `if k not in d` 再初始化」三行(对应 Java `computeIfAbsent`)。
+> - `Counter(seq)`——`Counter("aab")` 一行出 `{'a': 2, 'b': 1}`,频次统计专用 dict 子类。
+> - `dict.get(k, default)`——等价 Java `getOrDefault`,前缀和题里极其顺手。
+> - `set(seq)`——一行去重 + O(1) 成员查询,对应 Java `new HashSet<>(...)`。
+
+> 🟡 **记住这张地图**:哈希表不是「一种用法」,而是「以查询换遍历」的万能瑞士军刀。做题时先问:**这题 dict 里该存什么?(下标?次数?最早下标?还是只要 set?)** 本章 6 题 = 6 个答案。
+
+---
+
+## §36.2 Counter 计数指纹:is_anagram(LC242)🟢
+
+**题目**:给定两个字符串 `s` 和 `t`,判断 `t` 是否是 `s` 的字母异位词(字母完全相同、顺序不同)。
+
+### Java 对照最小例
+
+```java
+// Java:要么排序比较,要么 int[26] 计数
+char[] a = s.toCharArray(), b = t.toCharArray();
+Arrays.sort(a); Arrays.sort(b);
+boolean ok = Arrays.equals(a, b);
+```
+
+```python
+# Python:Counter 一行——字母频次指纹完全相同 ⟺ 异位词
+from collections import Counter
+
+def is_anagram(s: str, t: str) -> bool:
+    return Counter(s) == Counter(t)
+```
+
+### 真实场景例(已验证)
+
+```python
+is_anagram("anagram", "nagaram")   # True
+is_anagram("listen", "silent")     # True
+is_anagram("rat", "car")           # False —— 字母不同
+is_anagram("aab", "abb")           # False —— 字母【种类】相同({a,b}),但次数不同!
+is_anagram("ab", "a")              # False —— 长度不同必然 False
+is_anagram("", "")                 # True  —— 空串互为异位词
+```
+
+### ❌ 错误写法 → ✅ 正确写法
+
+```python
+# ❌ 用 set 比——set 只存「有没有」,丢了「几次」
+set("aab") == set("abb")           # True —— 误判!两边都是 {'a','b'}
+
+# ❌ Counter 用 & 当「相等」——& 是【交集】(次数取 min),不是判等
+Counter("aab") & Counter("abb")    # Counter({'a': 1, 'b': 1}) —— 和判等无关
+
+# ✅ Counter 直接 ==:dict 子类按键值全等比较,次数一字不差才 True
+Counter("aab") == Counter("abb")   # False
+Counter("anagram") == Counter("nagaram")  # True
+
+# ✅ 备选:sorted 比较也行,O(L log L),面试可作为「不用库」的第二答案
+sorted("anagram") == sorted("nagaram")    # True
+```
+
+> 🟢 **Java 老手秒懂**:`Counter` ≈ 你手写的 `Map<Character, Integer>` 频次表,只是 stdlib 帮你封装好了,还支持 `==` 直接比较(Java 的 `Map.equals` 也是按内容,语义一致)。
+>
+> **常踩的坑**:① **set 不能替代 Counter**——`"aab"`/`"abb"` 种类相同但频次不同,set 判等会蒙混过关(测试专门考了这条)。② `Counter` 的 `&`(交集)/`|`(并集)是「次数取 min/max」,**不是判等**。③ 排序法 `sorted(s) == sorted(t)` 也对,但 O(L log L);Counter 是 O(L)。④ 频次指纹这个直觉记住——§36.4 分组题就是它的推广。
+
+**复杂度**:O(L) 时间(L 为字符串长度),O(不同字符数) 空间。
+
+---
+
+## §36.3 dict 查表:two_sum(LC1)🟢
+
+**题目**:给定整数数组 `nums` 和 `target`,返回和为 `target` 的两个元素的**下标**。题面保证恰好一个解,同一元素不能重复用。
+
+### 为什么这么做
 
 暴力:两层循环 `for i: for j>i: if nums[i]+nums[j]==target` → O(n²)。
 
-观察:扫到 `nums[i]` 时,我们要找的是「前面有没有一个数 = `target - nums[i]`」。**这个查找是 O(n²) 的唯一来源**,用哈希表换成 O(1) 就行。
+观察:扫到 `nums[i]` 时,要找的是「前面有没有一个数 = `target - nums[i]`」。**这个查找是 O(n²) 的唯一来源**,用 dict 换成 O(1) 就行——dict 里存 `{值: 下标}`,边扫边查。
 
-```python
-def two_sum(nums, target):
-    seen = {}  # 值 -> 下标
-    for i, num in enumerate(nums):
-        complement = target - num
-        if complement in seen:          # O(1) 查
-            return [seen[complement], i]
-        seen[num] = i
-    return []
-```
-
-**为什么不先全部存进 dict 再查**:边扫边查能天然保证「两个下标不同」(查的是已扫过的,当前 i 还没登记),且只遍历一次。先全存会引入「同元素用两次」的坑(如 `nums=[3], target=6`,会误以为 3+3 命中),还得加下标判断。
-
-### Java 对比
+### Java 对照最小例
 
 ```java
-Map<Integer,Integer> seen = new HashMap<>();
+Map<Integer, Integer> seen = new HashMap<>();
 for (int i = 0; i < nums.length; i++) {
     int complement = target - nums[i];
-    if (seen.containsKey(complement)) {           // ← Python 一行 `in`
+    if (seen.containsKey(complement)) {      // ← Python: complement in seen
         return new int[]{seen.get(complement), i};
     }
-    seen.put(nums[i], i);                          // ← Python 一行 `seen[num] = i`
+    seen.put(nums[i], i);                    // ← Python: seen[num] = i
 }
 ```
 
-> 🟢 Java 老手秒懂:逻辑一模一样,Python 省了 `containsKey`/`put`/`get` 三个方法名,变成 `in`/`[]=`/`[]`。**`enumerate` 一行同时拿 index 和 value**,比 Java 的 `for(int i...)`+`nums[i]` 干净。
+```python
+def two_sum(nums, target):
+    seen = {}                                # 值 -> 下标
+    for i, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:               # O(1) 查
+            return [seen[complement], i]
+        seen[num] = i                        # 先查后登记
+    return []
+```
 
-> 🟡 **差异**:`enumerate(nums)` 默认从 0 开始下标;Java 是手写 `for(int i=0; i<nums.length; i++)`。
+### 真实场景例(已验证)
+
+```python
+two_sum([2, 7, 11, 15], 9)        # [0, 1] —— 2+7=9
+two_sum([3, 2, 4], 6)             # [1, 2] —— 2+4=6
+two_sum([3, 3], 6)                # [0, 1] —— 同值两个,先登记 3→0,扫到第二个命中
+two_sum([-1, -2, -3, -4, -5], -8) # [2, 4] —— 负数照常(-3 + -5)
+two_sum([10, 20, 30, 40, 50], 90) # [3, 4] —— 注意返回【下标】不是值
+```
+
+### ❌ 错误写法 → ✅ 正确写法
+
+```python
+# ❌ 先把所有数存进 dict 再统一查——允许「同元素用两次」
+seen = {num: i for i, num in enumerate(nums)}
+for i, num in enumerate(nums):
+    if target - num in seen:
+        return [seen[target - num], i]
+# 反例:two_sum([3, 2, 4], 6) → i=0 时 complement=3 在 dict 里
+# → 返回 [0, 0]!3+3=6 是假的,同一个下标用了两次
+
+# ✅ 边扫边查:查的是【已扫过的】元素,当前 i 还没登记,
+#    天然保证两个下标不同,且只遍历一次
+for i, num in enumerate(nums):
+    if target - num in seen:
+        return [seen[target - num], i]
+    seen[num] = i
+```
+
+> 🟢 **差异**:`enumerate(nums)` 一行同时拿下标和值,比 Java 的 `for(int i...)` + `nums[i]` 干净;`in` 替代 `containsKey`,`[]=` 替代 `put`。
 >
-> 🔴 **Python 特有**:`complement in seen` 直接判键存在,不像 Java 必须 `.containsKey()`。
+> **常踩的坑**:① **返回下标不是值**——题面要 `[i, j]`。② **先查后登记**顺序不能反,也不能先全存——否则同元素用两次。③ 重复元素别怕:`[3,3], 6` 第一个 3 先登记,扫到第二个 3 时命中返回 `[0,1]`——「同值覆盖」发生在命中之后,不影响正确性。④ `dict` 推导式 `{num: i for ...}` 会把同值的下标**覆盖成最后一个**,又一个「先全存」的暗坑。
 
-### 复杂度
-
-- 时间 **O(n)**:一次遍历,每次 dict 查/插平均 O(1)。
-- 空间 **O(n)**:最坏把所有数存进 dict。
-
-### 常见坑 ⚠️
-
-1. **返回下标不是值**——题面要 `[i, j]`,不是 `[nums[i], nums[j]]`。
-2. **不能先全存 dict 再查**——会允许「同元素用两次」。要边扫边查。
-3. **重复元素**(`[3,3], 6`):第一个 3 先登记,扫到第二个 3 时 `complement=3 in seen` 命中,返回 `[0,1]`,正确。别担心「同值会被覆盖」——覆盖之前已经查过了。
-
-> ✅ 做 `two_sum`:边扫边查,`if (target-num) in seen: return [seen[...], i]`,否则登记。
+**复杂度**:时间 **O(n)**(一次遍历,dict 查/插平均 O(1));空间 **O(n)**。
 
 ---
 
-## §36.3 LC49 字母异位词分组 `group_anagrams`(对应)🟡
+## §36.4 defaultdict 分组聚合:group_anagrams(LC49)🟡
 
-> **题面**:给定字符串数组,把「字母异位词」(字母相同、顺序不同)归为一组。返回分组列表。
+**题目**:给定字符串数组,把互为字母异位词的词归为一组,返回分组列表(组内/组间顺序不强制)。
 
-### 为什么这么做(讲透)
+### 为什么这么做
 
-关键洞察:**互为异位词的字符串,排序后字符序列完全相同**。`sorted("eat")` 和 `sorted("tea")` 都是 `['a','e','t']`,拼成字符串都是 `"aet"`。这个排序结果就是天然的「分组指纹(key)」。
+关键洞察(§36.2 的推广):**互为异位词的字符串,排序后字符序列完全相同**——`sorted("eat")` 和 `sorted("tea")` 都得到 `"aet"`。这个排序串就是天然的「分组指纹(key)」。
 
-于是:每个词算一个 key → 同 key 的词聚到一组。**分组聚合**是 `defaultdict(list)` 的拿手好戏:
+于是:每个词算 key → 同 key 聚一组。「按 key 分组聚合」正是 `defaultdict(list)` 的拿手好戏。
 
-```python
-from collections import defaultdict
-
-def group_anagrams(strs):
-    buckets = defaultdict(list)       # key 不存在时自动建 []
-    for word in strs:
-        key = "".join(sorted(word))   # 异位词的规范形式
-        buckets[key].append(word)     # 直接 append, 不用判 key 在不在
-    return list(buckets.values())
-```
-
-`defaultdict(list)` 省掉的三行 Java 样板:
-
-```python
-# 普通 dict 写法(啰嗦):
-buckets = {}
-for word in strs:
-    key = "".join(sorted(word))
-    if key not in buckets:           # ← 这两行
-        buckets[key] = []            # ← 被 defaultdict 自动做了
-    buckets[key].append(word)
-```
-
-### key 的其它选法
-
-排序当 key 是最直观的(O(L log L),L 是词长)。还有两种常见 key:
-- **字符计数 tuple**:`key = tuple(sorted(Counter(word).items()))`,或更紧凑的「26 字母频次 tuple」——O(L),对长词更快,但代码长。
-- 进阶题里(超大输入)频次 tuple 更优;本题排序就够。
-
-### Java 对比
+### Java 对照最小例
 
 ```java
 Map<String, List<String>> map = new HashMap<>();
 for (String w : strs) {
     char[] arr = w.toCharArray();
     Arrays.sort(arr);
-    String key = new String(arr);                 // ← Python: "".join(sorted(w))
-    map.computeIfAbsent(key, k -> new ArrayList<>()).add(w);  // ← defaultdict 自动做这个
+    String key = new String(arr);                          // ← Python: "".join(sorted(w))
+    map.computeIfAbsent(key, k -> new ArrayList<>()).add(w); // ← defaultdict 自动做这个
 }
 return new ArrayList<>(map.values());
 ```
 
-> 🟡 **差异**:`"".join(sorted(word))` 一行搞定「字符数组排序再拼回字符串」,Java 要 `toCharArray` → `Arrays.sort` → `new String(arr)` 三步。
+```python
+from collections import defaultdict
+
+def group_anagrams(strs):
+    buckets = defaultdict(list)     # key 不存在时自动建 []
+    for word in strs:
+        key = "".join(sorted(word)) # 异位词的规范形式(指纹)
+        buckets[key].append(word)   # 直接 append,不判 key 在不在
+    return list(buckets.values())
+```
+
+### 真实场景例(已验证)
+
+```python
+group_anagrams(["eat", "tea", "tan", "ate", "nat", "bat"])
+# 等价于 [["eat","tea","ate"], ["tan","nat"], ["bat"]] —— 3 组(顺序不强制)
+#   "eat"/"tea"/"ate" 的 key 都是 "aet";"tan"/"nat" 都是 "ant";"bat" 是 "abt"
+
+group_anagrams(["aab", "aba", "baa", "abc"])
+# [["aab","aba","baa"], ["abc"]] —— key "aab" 聚 3 个,"abc" 单独
+
+group_anagrams([""])   # [[""]]  —— sorted("")=[],join 得 "",单独成组
+group_anagrams([])     # []      —— 空输入空输出
+```
+
+### ❌ 错误写法 → ✅ 正确写法
+
+```python
+# ❌ 把 sorted 的结果(list)直接当 dict key——list 可变、不可哈希
+buckets[sorted(word)].append(word)      # TypeError: unhashable type: 'list'
+
+# ❌ 普通 dict + 每次判空(Java containsKey 思维残留)
+buckets = {}
+for word in strs:
+    key = "".join(sorted(word))
+    if key not in buckets:              # ← 这两行
+        buckets[key] = []               # ← defaultdict 帮你做了
+    buckets[key].append(word)
+
+# ✅ defaultdict(list) 一行建桶;key 用 "".join(...) 拼成 str(不可变、可哈希)
+buckets = defaultdict(list)
+buckets["".join(sorted(word))].append(word)
+```
+
+> 🟡 **差异**:`"".join(sorted(word))` 一行搞定「字符排序再拼回字符串」,Java 要 `toCharArray` → `Arrays.sort` → `new String(arr)` 三步;`list(buckets.values())` 一行把所有分组转成 list of lists。
 >
-> 🔴 **Python 特有**:`defaultdict(list)` + `computeIfAbsent` 的角色由「不存在的 key 自动建空 list」一步完成。`list(buckets.values())` 一行把 dict 的所有 value 转成 list of lists。
+> **常踩的坑**:① **dict key 必须可哈希**——list 不行,要么 `"".join(...)` 成 str,要么 `tuple(sorted(word))`。② key 的备选:排序 O(L log L) 最直观;进阶可用「26 字母频次 tuple」O(L)(如 `tuple(Counter(word) 展开成 26 槽)`),长词更快,本题排序就够。③ 空字符串 `""` 的 key 是 `""`,正常成组,不用特判。④ 返回分组**顺序不强制**——测试里「组内排序 + 组间排序」规整后再比,自己写测试别直接 `==` 原始顺序。
 
-### 复杂度
-
-- 时间 **O(n · L log L)**:n 个词,每个词排序 O(L log L)。L 为最长词长。如果用频次 tuple 当 key 可降到 O(n·L)。
-- 空间 **O(n·L)**:存所有词。
-
-### 常见坑 ⚠️
-
-1. **key 要是不可哈希的才能当 dict key**:排序结果是 list 不能直接当 key,要 `"".join(...)` 拼成字符串(或 `tuple(...)`)。
-2. **空字符串 `""`**:sorted 出来还是 `[]`,拼成 `""`,单独成一组 `[[""]]`,正确处理即可。
-3. **题面不强制组内/组间顺序**——测试时用「每组内排序 + 组间再排序」做规整后再比,别直接 `==`。
-
-> ✅ 做 `group_anagrams`:`key = "".join(sorted(word))` → `defaultdict(list).append` → `list(values())`。
+**复杂度**:时间 **O(n · L log L)**(n 个词各排序一次);空间 **O(n·L)**。
 
 ---
 
-## §36.4 LC560 和为 K 的子数组个数 `subarray_sum`(对应)🔴
+## §36.5 前缀和 + 频次表:subarray_sum(LC560)🔴
 
-> **题面**:给定整数数组 `nums` 和整数 `k`,返回和等于 `k` 的**连续子数组**个数。
+**题目**:给定整数数组 `nums`(可含负数)和整数 `k`,返回和等于 `k` 的**连续子数组个数**。
 
 ### 前缀和(讲透这个概念)
 
-**前缀和** `prefix[i]` = `nums[0] + nums[1] + ... + nums[i-1]`,约定 `prefix[0] = 0`(空前缀)。则任意连续子数组 `nums[i..j]` 之和 = `prefix[j+1] - prefix[i]`。
+**前缀和** `prefix[i]` = `nums[0] + ... + nums[i-1]`,约定 `prefix[0] = 0`(空前缀)。则任意连续子数组 `nums[i..j]` 之和 = `prefix[j+1] - prefix[i]`:
 
 ```
 nums:   [1, 2, 3]
@@ -202,189 +318,300 @@ prefix: [0, 1, 3, 6]      # prefix[0]=0, prefix[1]=1, prefix[2]=3, prefix[3]=6
 nums[1..2] = 2+3 = 5 = prefix[3] - prefix[1] = 6 - 1
 ```
 
-子数组和 = `k` 等价于 **`prefix[j] - prefix[i] == k`**,即 **`prefix[i] == prefix[j] - k`**。
+子数组和 = `k` ⟺ `prefix[j] - prefix[i] == k` ⟺ **`prefix[i] == prefix[j] - k`**。
 
 ### 为什么用哈希(讲透)
 
-我们要数「有多少对 (i, j) 使 prefix[j] - prefix[i] = k」。固定 j,等价于数「有多少个 i < j 满足 prefix[i] = prefix[j] - k」。
+要数「有多少对 (i<j) 使 prefix[j] - prefix[i] = k」。固定 j,等价于数「之前有多少个前缀和 == `prefix[j] - k`」——**这就是一次 O(1) 哈希查询!** 维护 `{前缀和值: 出现次数}`,边扫边查:
 
-**这就是一次 O(1) 哈希查找!** 维护一个 dict:`{前缀和值: 出现次数}`,扫到 j 时:
+### Java 对照最小例
 
-```python
-count += prefix_count.get(cur - k, 0)   # 多少个历史前缀和 == cur-k, 就多少个子数组和=k
-prefix_count[cur] = prefix_count.get(cur, 0) + 1   # 把当前前缀和登记
+```java
+int count = 0, cur = 0;
+Map<Integer, Integer> map = new HashMap<>();
+map.put(0, 1);                                // ← Python: {0: 1}
+for (int num : nums) {
+    cur += num;
+    count += map.getOrDefault(cur - k, 0);    // ← Python: .get(cur - k, 0)
+    map.merge(cur, 1, Integer::sum);          // ← Python: pc[cur] = pc.get(cur, 0) + 1
+}
 ```
-
-整体:
 
 ```python
 def subarray_sum(nums, k):
     count = 0
-    prefix_count = {0: 1}   # ← 关键: 前缀和 0 出现过一次 (空前缀)
+    prefix_count = {0: 1}        # ← 关键:前缀和 0 出现过一次(空前缀)
     cur = 0
     for num in nums:
         cur += num
-        count += prefix_count.get(cur - k, 0)
-        prefix_count[cur] = prefix_count.get(cur, 0) + 1
+        count += prefix_count.get(cur - k, 0)        # 先查
+        prefix_count[cur] = prefix_count.get(cur, 0) + 1  # 后登记
     return count
+```
+
+### 真实场景例(已验证)
+
+```python
+subarray_sum([1, 1, 1], 2)        # 2 —— [1,1](0-1) 和 [1,1](1-2)
+subarray_sum([1, 2, 3], 3)        # 2 —— [1,2] 和 [3]
+subarray_sum([5], 5)              # 1 —— 整个数组本身,考验 {0:1} 预置
+subarray_sum([0, 0, 0], 0)        # 6 —— n(n+1)/2 个非空子数组和全为 0
+subarray_sum([1, -1, 1, -1, 1], 0)  # 6 —— 含负数,滑窗做不了,哈希照杀
+subarray_sum([1, 2, 3], 100)      # 0
+subarray_sum([], 5)               # 0
 ```
 
 ### `{0: 1}` 初始项的玄机(必懂)
 
-为什么要预置 `prefix_count = {0: 1}`?
+为什么要预置 `prefix_count = {0: 1}`?考虑 `nums=[5], k=5`:扫到 5,`cur=5`,`cur-k=0`。不预置的话 `prefix_count.get(0)` 是 0,**漏数了「从下标 0 开始、整个前缀和就是 k」的子数组**。预置 `{0: 1}` 表示「前缀和 0 出现过一次(空前缀)」,`prefix[j] - prefix[0] = cur = k` 就能命中。
 
-考虑 `nums=[5], k=5`:扫到 5,`cur=5`,`cur-k=0`。如果不预置 `{0:1}`,查 `prefix_count[0]` 会得 0,**漏数了「整个前缀本身和就是 k」的子数组**(从下标 0 开始的子数组)。预置 `{0:1}` 表示「前缀和 0 出现过一次(空前缀,对应 prefix[0])」,这样 `prefix[j] - prefix[0] = cur - 0 = cur = k` 就能命中。
-
-> 记忆口诀:**前缀和问题,dict 初始要塞 `{0: 1}`,否则从下标 0 开始的子数组永远漏数。** 这是这类题最高频的坑。
+> 记忆口诀:**前缀和计数题,dict 起手塞 `{0: 1}`,否则从下标 0 开始的子数组永远漏数。** 这类题第一坑。
 
 ### 为什么不能像 Ch35 那样滑窗?
 
-Ch35 滑动窗口要求「窗口扩/缩时和单调变化」——即 `nums` 全正。本题 `nums` **可含负数**,前缀和不单调,缩窗不一定让和变小、扩窗不一定让和变大,**滑窗失效**。哈希前缀和是通用解。
+滑窗要求「窗口扩/缩时和单调变化」——即 `nums` 全正。本题**可含负数**,前缀和不单调:缩窗不一定让和变小、扩窗不一定变大,**滑窗失效**。哈希前缀和是通用解。
 
-### Java 对比
+### ❌ 错误写法 → ✅ 正确写法
 
-```java
-int count = 0, cur = 0;
-Map<Integer,Integer> map = new HashMap<>();
-map.put(0, 1);                                    // ← Python: {0: 1}
-for (int num : nums) {
-    cur += num;
-    count += map.getOrDefault(cur - k, 0);        // ← Python: .get(cur-k, 0)
-    map.merge(cur, 1, Integer::sum);              // ← Python: pc[cur] = pc.get(cur,0)+1
-}
+```python
+# ❌ 忘预置 {0: 1}——从下标 0 起的子数组全漏
+prefix_count = {}
+# subarray_sum([5], 5) → 0(正确是 1)
+
+# ❌ 先登记后查——把「当前位置自己」也算成一个子数组(空子数组)
+for num in nums:
+    cur += num
+    prefix_count[cur] = prefix_count.get(cur, 0) + 1   # 先登记
+    count += prefix_count.get(cur - k, 0)              # 再查
+# 反例:subarray_sum([0], 0) → 2(正确是 1):
+#   cur=0 先登记使 pc[0]=2,再查 cur-k=0 把刚登记的自己数了进去
+
+# ✅ {0: 1} 起手 + 先查后登记
+count += prefix_count.get(cur - k, 0)
+prefix_count[cur] = prefix_count.get(cur, 0) + 1
 ```
 
-> 🔴 **Python 特有**:
-> - `dict.get(k, default)` 等价 Java `getOrDefault`,一行写完「查不到给默认值」。
-> - 字面量初始化 `{0: 1}` 比 Java `new HashMap<>(); map.put(0,1);` 简洁太多。
-> - `prefix_count[cur] = prefix_count.get(cur,0) + 1` 一行「不存在则 0、再 +1、写回」,Java 要 `merge` 或手写 if-else。
+> 🔴 **Python 特有**:`dict.get(k, default)` 一行写完「查不到给 0」,等价 Java `getOrDefault`;字面量 `{0: 1}` 比起 `new HashMap<>(); map.put(0,1);` 简洁太多。
+>
+> **常踩的坑**:① 忘 `{0:1}`(上面)。② 顺序错(上面)——和 two_sum 一样**先查后登记**。③ 误用滑窗(负数失效)。④ 返回**个数**(int),不是子数组列表。
 
-> 🟡 **差异**:`count += prefix_count.get(cur - k, 0)` 这行是「查询并累加」,Java 要么 `getOrDefault` 要么先判 null。
-
-### 复杂度
-
-- 时间 **O(n)**:一次遍历,每次 dict 操作平均 O(1)。
-- 空间 **O(n)**:最坏每个前缀和都不同。
-
-### 常见坑 ⚠️
-
-1. **忘预置 `{0:1}`**——从下标 0 开始的子数组全部漏数。这是本题第一坑。
-2. **顺序错了**(先登记 cur 再查 cur-k)——会把当前元素自己也算进去(同元素用两次)。必须**先查后登记**。
-3. **误用滑窗**——nums 有负数时滑窗失效,必须哈希前缀和。
-4. **返回个数不是子数组本身**——题面要「个数」(int),不是 list。
-
-> ✅ 做 `subarray_sum`:`{0:1}` 起手 → 每步 `cur+=num` → `count+=pc.get(cur-k,0)` → `pc[cur]+=1`(先查后登记)。
+**复杂度**:时间 **O(n)**;空间 **O(n)**(最坏每个前缀和都不同)。
 
 ---
 
-## §36.5 LC128 最长连续序列 `longest_consecutive`(对应)🟡
+## §36.6 前缀和变体:find_max_length(LC525)🔴
 
-> **题面**:给定未排序整数数组,返回最长连续元素序列的长度(如 `[100,4,200,1,3,2]` 的最长连续序列是 `[1,2,3,4]`,长 4)。要求 **O(n)**。
+**题目**:给定只含 0 和 1 的数组,返回「0 和 1 个数相等」的**最长**连续子数组长度。
+
+### 两个关键洞察
+
+**洞察 1:0→-1 变换。** 把 0 看成 -1,则「0 和 1 个数相等」⟺「子数组和为 0」。问题变成:**和为 0 的最长连续子数组**——前缀和的主场(§36.5)。
+
+**洞察 2:dict 里存的东西变了。** 上一题数「个数」→ dict 存 `{前缀和: 出现次数}`;这题求「最长」→ dict 存 `{前缀和: 最早出现的下标}`。同一前缀和再次出现时,`i - first[cur]` 就是一个平衡子数组长度。**只记最早、绝不覆盖**——下标越早,算出的长度越长。
+
+### Java 对照最小例
+
+```java
+Map<Integer, Integer> first = new HashMap<>();
+first.put(0, -1);                              // 前缀和 0 在「下标 -1」(空前缀)
+int cur = 0, best = 0;
+for (int i = 0; i < nums.length; i++) {
+    cur += (nums[i] == 1) ? 1 : -1;
+    if (first.containsKey(cur)) {
+        best = Math.max(best, i - first.get(cur));
+    } else {
+        first.put(cur, i);                     // 只记最早;Java 也可 putIfAbsent
+    }
+}
+```
+
+```python
+def find_max_length(nums):
+    first = {0: -1}              # 前缀和 0 的「最早下标」是 -1(空前缀末尾)
+    cur = best = 0
+    for i, x in enumerate(nums):
+        cur += 1 if x == 1 else -1
+        if cur in first:
+            best = max(best, i - first[cur])
+        else:
+            first[cur] = i       # 只在第一次出现时登记
+    return best
+```
+
+### 为什么初始是 `{0: -1}` 而不是 `{0: 1}`
+
+§36.5 数次数,空前缀「出现 1 次」→ `{0: 1}`;本题算长度,空前缀的「下标」是 **-1**(一个元素都还没取)。若从下标 0 开始的整段前缀就平衡(`[0,1]`),`cur=0` 在 `i=1` 处命中,长度 = `1 - (-1) = 2` ✓。没有 `{0: -1}` 就会漏掉所有「从下标 0 开始」的答案。
+
+### 真实场景例(已验证)
+
+```python
+find_max_length([0, 1])                # 2 —— 整段平衡:1 - (-1) = 2
+find_max_length([0, 1, 0])             # 2 —— [0,1] 或 [1,0]
+find_max_length([0, 0, 1, 0, 0])       # 2
+find_max_length([0, 1, 1, 0, 1, 1])    # 4 —— 子数组 [0,1,1,0](下标 0-3)
+find_max_length([0, 0, 0, 1, 1, 1])    # 6 —— 整组全平衡
+find_max_length([1, 0, 1, 0])          # 4 —— 整段;没有 {0:-1} 这题会错成 2
+find_max_length([1, 1, 1])             # 0 —— 永远不平衡
+find_max_length([])                    # 0
+```
+
+手推 `[0, 0, 0, 1, 1, 1]`(0→-1 后 `-1,-1,-1,1,1,1`),`first` 起手 `{0:-1}`:
+
+| i | cur | first 里有没有 | 动作 | best |
+|---|-----|---------------|------|------|
+| 0 | -1 | 无 | `first[-1]=0` | 0 |
+| 1 | -2 | 无 | `first[-2]=1` | 0 |
+| 2 | -3 | 无 | `first[-3]=2` | 0 |
+| 3 | -2 | 有(下标 1) | `best = max(0, 3-1) = 2` | 2 |
+| 4 | -1 | 有(下标 0) | `best = max(2, 4-0) = 4` | 4 |
+| 5 |  0 | 有(下标 -1) | `best = max(4, 5-(-1)) = 6` | **6** |
+
+### ❌ 错误写法 → ✅ 正确写法
+
+```python
+# ❌ 无条件覆盖 first[cur]——「最早下标」被后来的刷掉,长度算短甚至算错
+first[cur] = i                       # 写在 if 外面 / if 里都错
+# 反例:[0,1] → i=1 时 cur=0,先覆盖 first[0]=1,长度算成 1-1=0(正确是 2)
+
+# ❌ 抄 560 记次数——求「最长」要的是下标差,次数毫无意义
+
+# ✅ 只在「没见过」时登记;见过就拿最早下标算长度
+if cur in first:
+    best = max(best, i - first[cur])
+else:
+    first[cur] = i
+```
+
+> 🔴 **和 §36.5 的对照组(费曼点)**:同一个「前缀和 + 哈希」骨架——560 问「多少个」→ dict 存**次数**,每次命中累加;525 问「最长多少」→ dict 存**最早下标**,每次命中取 `i - first[cur]` 刷最大值。**前缀和题先想清楚:dict 的 value 该存什么?初始 `{0: ?}` 的 `?` 是什么语义(次数 1 / 下标 -1)?**
+>
+> **常踩的坑**:① 忘 0→-1 变换,直接对 0/1 求和找不到目标。② 覆盖最早下标(上面)。③ 初始 `{0: -1}` 写成 `{0: 0}`——从下标 0 起的平衡段长度会少 1。
+
+**复杂度**:时间 **O(n)**;空间 **O(n)**。
+
+---
+
+## §36.7 set 成员查询:longest_consecutive(LC128)🟡
+
+**题目**:给定未排序整数数组,返回最长连续元素序列的长度(如 `[100,4,200,1,3,2]` 的最长连续序列是 `[1,2,3,4]`,长 4)。要求 **O(n)**。
 
 ### 为什么不能排序
 
-排序是 O(n log n),题目要求 O(n)。**不能用排序。** 只能用哈希(`set` 去重 + O(1) 查询)。
+排序是 O(n log n),题目要求 O(n) → 只能用哈希:`set` 去重 + O(1) 查「在不在」。
 
 ### 关键洞察:只从「序列起点」开始数
 
-把所有数塞进 `set`(O(1) 查「在不在」)。对每个数 `n`,如果 `n-1` 也在 set 里,说明 `n` 不是序列起点(它前面还有更小的),**跳过**——因为从 `n-1` 那边数的时候会覆盖到 `n`,从 `n` 数就重复了。
+把所有数塞进 `set`。对每个 `n`:如果 `n-1` **也在** set 里,说明 `n` 不是序列起点(前面还有更小的),**跳过**——从 `n-1` 那头数时会覆盖到 `n`,从 `n` 数纯属重复。只有当 **`n-1` 不在 set 里**(`n` 是某段连续序列的最小值)才从 `n` 往 `n+1, n+2, ...` 数,数到不在为止。
 
-只有当 **`n-1` 不在 set 里**(`n` 是某个连续序列的最小值)时,才从 `n` 开始往 `n+1, n+2, ...` 数,数到不在 set 为止,记录长度。
+### Java 对照最小例
+
+```java
+Set<Integer> set = new HashSet<>();
+for (int x : nums) set.add(x);
+int best = 0;
+for (int n : set) {
+    if (set.contains(n - 1)) continue;     // 不是起点,跳过
+    int len = 1, m = n + 1;
+    while (set.contains(m)) { len++; m++; }
+    best = Math.max(best, len);
+}
+```
 
 ```python
 def longest_consecutive(nums):
-    num_set = set(nums)     # 去重 + O(1) 查
+    num_set = set(nums)          # 去重 + O(1) 查
     best = 0
     for n in num_set:
         if n - 1 in num_set:
-            continue        # n 不是起点, 跳过
-        length = 1
-        m = n + 1
-        while m in num_set: # 从起点往后数
+            continue             # n 不是起点,跳过
+        length, m = 1, n + 1
+        while m in num_set:      # 从起点往大数方向数
             length += 1
             m += 1
         best = max(best, length)
     return best
 ```
 
-### 为什么是 O(n)
+### 真实场景例(已验证)
 
-直觉怀疑:外层 for + 内层 while,会不会 O(n²)?
-
-不会。每个元素 `x` 被「内层 while」访问到**当且仅当**它是某个从起点延伸的序列的一部分,且**只被那一个起点对应的 while 访问一次**(因为别的非起点元素都 `continue` 了)。所以内层 while 的总执行次数 = 所有「非起点但属于某序列」的元素个数 ≤ n。整体 O(n) + O(n) = **O(n)**。
-
-### Java 对比
-
-```java
-Set<Integer> set = new HashSet<>(nums.length);     // ← Python: set(nums)
-for (int x : nums) set.add(x);
-int best = 0;
-for (int n : set) {
-    if (set.contains(n - 1)) continue;             // ← Python: n-1 in num_set
-    int len = 1, m = n + 1;
-    while (set.contains(m)) { len++; m++; }        // ← Python: while m in num_set
-    best = Math.max(best, len);
-}
+```python
+longest_consecutive([100, 4, 200, 1, 3, 2])      # 4 —— 序列 1,2,3,4
+longest_consecutive([0, 3, 7, 2, 5, 8, 4, 6, 0, 1])  # 9 —— 序列 0..8
+longest_consecutive([1, 1, 1, 1])                # 1 —— 重复只算一次
+longest_consecutive([10, 20, 30, 40])            # 1 —— 谁也不挨着谁
+longest_consecutive([-1, -2, -3, 0, 1])          # 5 —— 负数序列 -3..1
+longest_consecutive([1, 2])                      # 2
+longest_consecutive([])                          # 0
 ```
 
-> 🟡 **差异**:`set(nums)` 一行把 list 去重转 set,Java 要 `new HashSet<>(Arrays.asList(...))` 或循环 `add`。`n - 1 in num_set` 直接判存在,Java 是 `set.contains(...)`。
+### 为什么是 O(n) 而不是 O(n²)
+
+外层 for + 内层 while,直觉像 O(n²)。但内层 while 访问到的每个元素 `x`,**当且仅当**它属于「某个从起点延伸的序列」,且只被**那一个**起点的 while 访问一次(非起点元素全 `continue` 了)。所以 while 总执行次数 ≤ n,整体 O(n) + O(n) = **O(n)**。
+
+### ❌ 错误写法 → ✅ 正确写法
+
+```python
+# ❌ 不跳过非起点——答案仍对,但每个数都往后续数一遍,退化 O(n²)
+for n in num_set:
+    length, m = 1, n + 1
+    while m in num_set: ...      # 没有 if n-1 in num_set: continue
+
+# ❌ 起点判断方向反了——n+1 not in set 是「序列终点」,
+#    从终点往大数方向数永远 length=1
+if n + 1 not in num_set:         # [1,2,3] 会错答成 1
+    ...
+
+# ✅ n-1 not in num_set 才是起点;往 n+1 方向数
+if n - 1 in num_set:
+    continue
+```
+
+> 🟡 **差异**:`set(nums)` 一行把 list 去重转 set,Java 要循环 `add`;`while m in num_set:` 把 `in` 直接当循环条件,极简。
 >
-> 🔴 **Python 特有**:`set(nums)` 构造器吃任何可迭代对象;`while m in num_set:` 的 `in` 直接当循环条件,极简。
+> **常踩的坑**:① 忘跳非起点(上面)。② 起点方向反(上面)。③ 遍历 `nums` 而不是 `num_set`——有重复时同一起点重复数,答案对但白耗时。④ 空数组返回 0(`best=0` 初值天然处理)。
 
-### 复杂度
-
-- 时间 **O(n)**:见上分析。
-- 空间 **O(n)**:set 存所有数。
-
-### 常见坑 ⚠️
-
-1. **忘跳过非起点元素**——不 `continue` 就退化成 O(n²)(每个数都往后续数一遍,大量重复)。
-2. **遍历 `nums` 而不是 `num_set`**——`nums` 有重复元素时,同一个起点会数多次(虽然答案对,但浪费时间)。应遍历去重后的 `num_set`。
-3. **起点判断方向反了**——是 `n-1 not in set`(`n` 是起点)才数,**不是** `n+1 not in set`。数列往大数方向延伸。
-4. **空数组**——返回 0,`best=0` 初值天然处理。
-
-> ✅ 做 `longest_consecutive`:`set(nums)` → 只对 `n-1 not in set` 的起点 → `while m in set: 数` → `max(best, length)`。
+**复杂度**:时间 **O(n)**;空间 **O(n)**。
 
 ---
 
-## §36.6 四题对比总结(讲透)
+## §36.8 六题对比总结(不出题)
 
-| 题 | 哈希表的角色 | dict 存什么 | 关键操作 |
-|----|-------------|-------------|----------|
-| two_sum | 查 complement | `{值: 下标}` | `complement in seen` |
-| group_anagrams | 按 key 聚合 | `defaultdict(list): {key: [词...]}` | `buckets[key].append` |
-| subarray_sum | 计数(值→出现次数) | `{前缀和: 次数}` | `count += pc.get(cur-k, 0)` |
-| longest_consecutive | O(1) 成员查询 | `set` | `n-1 in num_set` |
+| 题 | 哈希表角色 | 存什么 | 关键操作 | 初始项 |
+|----|-----------|--------|----------|--------|
+| is_anagram | 计数指纹 | `Counter` 词频 | `Counter(s) == Counter(t)` | — |
+| two_sum | 查表 | `{值: 下标}` | `complement in seen` | `{}` |
+| group_anagrams | 分组聚合 | `{指纹: [词...]}` | `buckets[key].append` | `defaultdict(list)` |
+| subarray_sum | 频次表 | `{前缀和: 次数}` | `count += pc.get(cur-k, 0)` | `{0: 1}` |
+| find_max_length | 最值索引 | `{前缀和: 最早下标}` | `best = max(best, i - first[cur])` | `{0: -1}` |
+| longest_consecutive | 成员查询 | `set` | `n - 1 in num_set` | `set(nums)` |
 
-四个截然不同的用法:**当 map 用 / 当 group-by 用 / 当频次表用 / 当 set 用**。哈希表就是「以查询换遍历」的万能瑞士军刀。
-
----
-
-## §36.7 Pythonic 技巧速查(本章用到)🔴
-
-| 技巧 | 代码 | 替代的 Java 样板 |
-|------|------|-----------------|
-| 字面量建 dict | `d = {"a": 1}` 或 `d = {}` | `Map<K,V> d = new HashMap<>();` |
-| 判键存在 | `k in d` | `d.containsKey(k)` |
-| 安全取值(带默认) | `d.get(k, default)` | `d.getOrDefault(k, default)` |
-| 自动建默认值的 dict | `defaultdict(list)` / `defaultdict(int)` | `computeIfAbsent(k, k->new ArrayList<>())` |
-| 计数 | `Counter(seq)` | 手写循环 `map.merge(x,1,Integer::sum)` |
-| list 去重 + O(1) 查 | `set(seq)` | `new HashSet<>(seq)` |
-| list 转字符串拼接 | `"".join(parts)` | `String.join("", parts)` 或 `StringBuilder` |
-| 同时拿 index+value | `for i, x in enumerate(seq)` | `for (int i=0; i<a.length; i++) x=a[i]` |
-| 排序副本 | `sorted(seq)` | `Arrays.sort(arr.clone())` |
+三条通用规律:
+1. **先查后登记**(two_sum / subarray_sum)——查的是「历史」,别把自己算进去。
+2. **前缀和题先想 value 语义**——数个数存次数(`{0:1}`),求最值存下标(`{0:-1}`)。
+3. **dict / set 选型看问题**——要映射用 dict,只要「在不在」用 set,要次数用 Counter,要分组用 defaultdict。
 
 ---
 
-## §36.8 Java 老手常踩的坑 ⚠️
+## §36.9 Java 老手常踩的坑(汇总)⚠️(不出题)
 
-1. **`{0:1}` 忘记预置**(§36.4):前缀和题第一坑,从下标 0 起的子数组全漏。
-2. **`defaultdict` 和普通 dict 混用**:普通 `dict` 不存在 key 会 `KeyError`,而 `d[k] += 1` 在 Java 里靠 `getOrDefault` 才安全;Python 直接 `defaultdict(int)` 或 `d.get(k,0)+1`。
-3. **把可变对象当 key**:list 不能当 dict key(不可哈希),要 `tuple(...)` 或 `"".join(...)`(§36.3 异位词 key)。
-4. **遍历有重复的 nums 而非去重 set**(§36.5):浪费时间。
-5. **顺序错(先登记后查)**:two_sum / subarray_sum 都要**先查后登记**,否则同元素用两次。
-6. **滑窗乱用**:有负数的子数组和题不能滑窗,要哈希前缀和。
-7. **返回下标 vs 值 vs 个数搞混**:two_sum 返下标、group_anagrams 返分组、subarray_sum 返个数——看清题面。
+1. **用 `set` 判异位词** → 种类同、次数不同会误判;用 `Counter ==`(§36.2)。
+2. **two_sum 先全存 dict 再查** → 同元素用两次;边扫边查、先查后登记(§36.3)。
+3. **把 list 当 dict key** → 不可哈希直接 TypeError;`"".join(sorted(w))` 或 `tuple(...)`(§36.4)。
+4. **普通 dict 分组手写判空** → `defaultdict(list)` 把「默认值」声明在创建处(§36.4)。
+5. **前缀和忘预置初始项** → 计数题 `{0: 1}`、最值题 `{0: -1}`,漏了就错掉「从下标 0 起」的解(§36.5/§36.6)。
+6. **先登记后查** → 把当前位置自己数进去(§36.5 反例 `[0],k=0` 错成 2)。
+7. **525 里覆盖最早下标** → 只记第一次出现,越早已知越长(§36.6)。
+8. **有负数还用滑窗** → 前缀和不单调,滑窗失效,上哈希(§36.5)。
+9. **longest_consecutive 不跳非起点 / 起点方向反** → O(n²) 或全错(§36.7)。
+10. **返回类型看错** → 下标(two_sum)/ 分组(group_anagrams)/ 个数(subarray_sum)/ 长度(find_max_length、longest_consecutive),看清题面。
+
+---
+
+## 📚 延伸阅读(本章不出题)
+
+- **LC974 和可被 K 整除的子数组**:前缀和再升级——`{前缀和 % k: 次数}`(同余的前缀和之差必被 k 整除),初始 `{0: 1}`。会了 560 这就是送分。
+- **LC523 连续的子数组和**:560 的「和为 k 倍数 + 长度 ≥ 2」版,dict 存 `{余数: 最早下标}`——正好缝合本章两种 value 语义。
+- **`Counter` 的算术**:`Counter` 支持 `+`/`-`/`&`/`|`,但那些是「次数加减/取 min/max」,判等只有 `==`(§36.2)。
+- **`tuple` 当 key 的更多玩法**:26 字母频次 tuple 作异位词 key(O(L)),或 LC49 变体里把「排序串」换成「计数签名」。
 
 ---
 
@@ -392,9 +619,11 @@ for (int n : set) {
 
 | 任务 | 知识点 | 难度 |
 |------|--------|------|
-| `two_sum` | dict 查 complement,O(n) | 🟢 |
-| `group_anagrams` | 排序 key + `defaultdict` 聚合 | 🟡 |
-| `subarray_sum` | 前缀和 + dict 计数,`{0:1}` 玄机 | 🔴 |
+| `is_anagram` | Counter 计数指纹 | 🟢 |
+| `two_sum` | dict 查 complement,先查后登记 | 🟢 |
+| `group_anagrams` | 排序 key + defaultdict 聚合 | 🟡 |
+| `subarray_sum` | 前缀和 + 频次表,`{0:1}` | 🔴 |
+| `find_max_length` | 0→-1 + 最早下标,`{0:-1}` | 🔴 |
 | `longest_consecutive` | set + 只从起点数,O(n) | 🟡 |
 
 ```bash
@@ -407,19 +636,23 @@ uv run pytest 06_leetcode/ch36/test_ch36_assignment.py -v
 
 ## ✅ 自测
 
-- [ ] 能说清哈希表怎么把 O(n²) 降到 O(n)(「查询换遍历」)
-- [ ] `two_sum` 边扫边查,知道为什么不能先全存 dict
-- [ ] `group_anagrams` 会用 `defaultdict(list)` + `"".join(sorted(word))` 作 key
-- [ ] `subarray_sum` 知道前缀和 `prefix[j]-prefix[i]=k`、`{0:1}` 初始项的玄机、为什么有负数不能滑窗
-- [ ] `longest_consecutive` 知道为什么只从「起点」(n-1 不在 set)开始数才 O(n)
-- [ ] 4 个作业全绿
+- [ ] 一句话说清哈希表怎么把 O(n²) 降到 O(n)(「以查询换遍历」)
+- [ ] `is_anagram` 会用 `Counter ==`,说清为什么 `set` 会误判 `"aab"/"abb"`
+- [ ] `two_sum` 边扫边查,知道为什么不能先全存 dict(同元素用两次)
+- [ ] `group_anagrams` 会用 `defaultdict(list)` + `"".join(sorted(word))`,知道 list 不能当 key
+- [ ] `subarray_sum` 会写 `prefix[j]-prefix[i]=k` 的等价式,记得 `{0:1}` 和先查后登记
+- [ ] `find_max_length` 会说清 0→-1 变换、dict 为什么存「最早下标」、`{0:-1}` 的语义
+- [ ] `longest_consecutive` 知道为什么只从「起点」(n-1 不在 set)数才 O(n)
+- [ ] 能背出六题 dict/set 里各存什么(§36.8 表)
+- [ ] 6 个作业全绿
 
 ## 🎓 费曼挑战
 
-1. 「为什么 `subarray_sum` 必须 `prefix_count={0:1}` 预置?不预置会漏什么?」— 重读 §36.4
-2. 「`longest_consecutive` 为什么是 O(n) 而不是 O(n²)?内层 while 不会重复数吗?」— 重读 §36.5
-3. 「`two_sum` 为什么不能先把所有数存进 dict 再查?」— 重读 §36.2
-4. 「`group_anagrams` 除了排序当 key,还有什么 key 写法?时间复杂度差别?」— 重读 §36.3
+1. 「为什么 `subarray_sum` 必须预置 `{0:1}`?举 `nums=[5], k=5` 讲漏数的情况。」— 重读 §36.5
+2. 「`find_max_length` 和 `subarray_sum` 是同一个骨架,dict 的 value 为什么一个是次数一个是最早下标?初始项为什么一个 1 一个 -1?」— 重读 §36.6
+3. 「`two_sum` 为什么不能先把所有数存进 dict 再查?举 `[3,2,4], 6` 讲。」— 重读 §36.3
+4. 「`longest_consecutive` 有内层 while,为什么还是 O(n)?」— 重读 §36.7
+5. 「`set` 为什么不能用来判异位词?`Counter` 的 `&` 又为什么不能当判等?」— 重读 §36.2
 
 ## 🧠 记忆闪卡 → [`review.md`](./review.md)
 
@@ -427,4 +660,4 @@ uv run pytest 06_leetcode/ch36/test_ch36_assignment.py -v
 
 ## ⏭️ 下一步:Ch37 栈 / 队列 / 单调栈
 
-哈希表是「以查询换遍历」。下一章栈/队列是 **LIFO/FIFO** 的顺序结构,而**单调栈**能在 O(n) 内解决「下一个更大元素」这类题(像 LC739 每日温度、LC42 接雨水)。从「查」到「维护单调顺序」。
+哈希表是「以查询换遍历」。下一章栈/队列是 **LIFO/FIFO** 的顺序结构,而**单调栈**能在 O(n) 内解决「下一个更大元素」这类题(LC739 每日温度、LC42 接雨水)。从「查」到「维护单调顺序」。

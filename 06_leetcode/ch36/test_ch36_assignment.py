@@ -7,7 +7,9 @@
 import pytest
 
 from ch36_assignment import (
+    find_max_length,
     group_anagrams,
+    is_anagram,
     longest_consecutive,
     subarray_sum,
     two_sum,
@@ -15,7 +17,40 @@ from ch36_assignment import (
 
 
 # ---------------------------------------------------------------------------
-# LC1 两数之和
+# LC242 字母异位词(§36.2 Counter 计数指纹)
+# ---------------------------------------------------------------------------
+class TestIsAnagram:
+    def test_leetcode_example1(self):
+        assert is_anagram("anagram", "nagaram") is True
+
+    def test_leetcode_example2(self):
+        assert is_anagram("rat", "car") is False
+
+    def test_common_anagram_pair(self):
+        assert is_anagram("listen", "silent") is True
+
+    def test_same_word(self):
+        assert is_anagram("a", "a") is True
+
+    def test_different_lengths(self):
+        assert is_anagram("ab", "a") is False
+
+    def test_both_empty(self):
+        assert is_anagram("", "") is True
+
+    def test_same_char_set_but_different_counts(self):
+        # 能拦住「用 set 判等」的蒙对实现:种类相同、次数不同
+        assert is_anagram("aab", "abb") is False
+
+    def test_repeated_chars(self):
+        assert is_anagram("aabbbc", "babcab") is True
+
+    def test_single_char_mismatch(self):
+        assert is_anagram("a", "b") is False
+
+
+# ---------------------------------------------------------------------------
+# LC1 两数之和(§36.3 dict 查表)
 # ---------------------------------------------------------------------------
 class TestTwoSum:
     def test_leetcode_example1(self):
@@ -23,7 +58,7 @@ class TestTwoSum:
         assert two_sum([2, 7, 11, 15], 9) == [0, 1]
 
     def test_leetcode_example2(self):
-        # [3,2,4], target=6 -> [1,2]
+        # [3,2,4], target=6 -> [1,2];也能拦住「先全存再查」错答 [0,0]
         assert two_sum([3, 2, 4], 6) == [1, 2]
 
     def test_leetcode_example3_duplicate_values(self):
@@ -54,7 +89,7 @@ class TestTwoSum:
 
 
 # ---------------------------------------------------------------------------
-# LC49 字母异位词分组
+# LC49 字母异位词分组(§36.4 defaultdict 聚合)
 # ---------------------------------------------------------------------------
 class TestGroupAnagrams:
     def _normalize(self, groups: list[list[str]]) -> list[list[str]]:
@@ -102,7 +137,7 @@ class TestGroupAnagrams:
 
 
 # ---------------------------------------------------------------------------
-# LC560 和为 K 的子数组个数
+# LC560 和为 K 的子数组个数(§36.5 前缀和 + 频次表)
 # ---------------------------------------------------------------------------
 class TestSubarraySum:
     def test_leetcode_example1(self):
@@ -117,6 +152,10 @@ class TestSubarraySum:
 
     def test_single_element_not_equal_k(self):
         assert subarray_sum([1], 0) == 0
+
+    def test_zero_element_k_zero(self):
+        # 能拦住「先登记后查」的错误实现(那会把自己数进去得 2)
+        assert subarray_sum([0], 0) == 1
 
     def test_empty_array(self):
         assert subarray_sum([], 0) == 0
@@ -152,7 +191,49 @@ class TestSubarraySum:
 
 
 # ---------------------------------------------------------------------------
-# LC128 最长连续序列
+# LC525 最长平衡 01 子数组(§36.6 前缀和 + 最早下标)
+# ---------------------------------------------------------------------------
+class TestFindMaxLength:
+    def test_leetcode_example1(self):
+        # [0,1,0] -> 2 ([0,1] 或 [1,0]);也能拦住「覆盖最早下标」错答 0
+        assert find_max_length([0, 1, 0]) == 2
+
+    def test_leetcode_example2(self):
+        # [0,1,0,0,1,1,0] -> 6 (子数组下标 1-6)
+        assert find_max_length([0, 1, 0, 0, 1, 1, 0]) == 6
+
+    def test_minimal_balanced_pair(self):
+        assert find_max_length([0, 1]) == 2
+
+    def test_whole_array_balanced(self):
+        assert find_max_length([0, 0, 0, 1, 1, 1]) == 6
+
+    def test_balanced_prefix_from_index_zero(self):
+        # 从下标 0 起整段平衡, 考验 {0: -1} 初始项;缺它会错答 2
+        assert find_max_length([1, 0, 1, 0]) == 4
+
+    def test_middle_window(self):
+        # [0,1,1,0,1,1] -> 4 (子数组下标 0-3 = [0,1,1,0])
+        assert find_max_length([0, 1, 1, 0, 1, 1]) == 4
+
+    def test_leading_imbalance(self):
+        assert find_max_length([0, 0, 1, 0, 0]) == 2
+
+    def test_all_ones(self):
+        assert find_max_length([1, 1, 1]) == 0
+
+    def test_all_zeros(self):
+        assert find_max_length([0, 0]) == 0
+
+    def test_single_element(self):
+        assert find_max_length([0]) == 0
+
+    def test_empty(self):
+        assert find_max_length([]) == 0
+
+
+# ---------------------------------------------------------------------------
+# LC128 最长连续序列(§36.7 set 成员查询)
 # ---------------------------------------------------------------------------
 class TestLongestConsecutive:
     def test_leetcode_example1(self):
@@ -162,6 +243,10 @@ class TestLongestConsecutive:
     def test_leetcode_example2(self):
         # [0,3,7,2,5,8,4,6,0,1] -> 9 (序列 0..8)
         assert longest_consecutive([0, 3, 7, 2, 5, 8, 4, 6, 0, 1]) == 9
+
+    def test_short_run_of_three(self):
+        # 能拦住「起点方向判断反了」(那会答 1)
+        assert longest_consecutive([1, 2, 3]) == 3
 
     def test_empty(self):
         assert longest_consecutive([]) == 0

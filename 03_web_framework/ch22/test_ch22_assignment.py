@@ -1,166 +1,283 @@
 """
-Ch22 测试:配置管理(pydantic-settings)。
+Ch22 测试:部署(uvicorn/gunicorn/Docker + 配置管理)。
 
-测点:
-① 默认值 —— 不设任何环境变量,Settings() 字段取默认。
-② 环境变量覆盖 —— monkeypatch 设 DATABASE_URL/SECRET_KEY/DEBUG/REDIS_URL 等 → 实例化 → 断言。
-③ 类型转换 —— DEBUG=false(字符串)→ bool False。
-④ 可选字段 —— redis_url 默认 None,设了就有值。
-⑤ get_settings 缓存 —— 同一进程返回同一实例;cache_clear 后重读环境变量。
-⑥ /health 端点 —— TestClient 打,返回含 app/environment/version/debug。
+测点(每个函数一个 TestXxx 类):
+- TestWorkerCountForCores        §22.2 容量公式 2×CPU+1,下限兜底
+- TestBuildGunicornCommand       §22.2 gunicorn 命令是 list[str] 数据
+- TestGetSettings                §22.3 lru_cache 单例 + cache_clear 重读
+- TestMaskSecret                 §22.3 脱敏:正常/太短/None/空串
+- TestSafeConfigDict             §22.3 model_dump + 敏感字段被脱敏、其余原样
+- TestBuildDockerRunCommand      §22.4 docker run -e 注入,env 排序确定性
+- TestHealth                     §22.5 端点 200 + 字段 + 反映环境变量
+- TestCheckProductionReadiness   §22.6 检查清单:dev/prod/边界,顺序断言
 """
 import pytest
 from fastapi.testclient import TestClient
 
-from ch22_assignment import APP_VERSION, Settings, app, get_settings
+from ch22_assignment import (
+    APP_VERSION,
+    DEFAULT_SECRET_KEY,
+    Settings,
+    app,
+    build_docker_run_command,
+    build_gunicorn_command,
+    check_production_readiness,
+    get_settings,
+    health,  # noqa: F401  (经 TestClient 间接测)
+    mask_secret,
+    safe_config_dict,
+    worker_count_for_cores,
+)
+
+# 所有可能干扰 Settings 默认值的环境变量
+_ENV_KEYS = (
+    "APP_NAME", "ENVIRONMENT", "DEBUG", "DATABASE_URL",
+    "SECRET_KEY", "ACCESS_TOKEN_EXPIRE_MINUTES", "REDIS_URL",
+)
 
 
-# ---------- §22.3 默认值 ----------
-
-
-def test_settings_defaults(monkeypatch):
-    """【默认值】不设任何环境变量,Settings 走默认值。"""
-    # 清掉可能影响的环境变量,保证干净
-    for key in (
-        "APP_NAME", "ENVIRONMENT", "DEBUG", "DATABASE_URL",
-        "SECRET_KEY", "ACCESS_TOKEN_EXPIRE_MINUTES", "REDIS_URL",
-    ):
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    """每个测试前清掉相关环境变量 + 清 lru_cache,保证互不影响。"""
+    for key in _ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
-
-    s = Settings()
-
-    assert s.app_name == "Product API"
-    assert s.environment == "dev"
-    assert s.debug is True
-    assert s.database_url == "sqlite:///./app.db"
-    assert s.secret_key == "dev-secret-change-me"
-    assert s.access_token_expire_minutes == 30
-    assert s.redis_url is None
-
-
-# ---------- §22.3 环境变量覆盖 + 类型转换 ----------
-
-
-def test_settings_env_overrides(monkeypatch):
-    """【环境变量覆盖 + 类型转换】设环境变量 → 字段被覆盖且类型正确。
-
-    pydantic-settings 把字符串环境变量按字段注解自动转 bool/int/str。
-    """
-    monkeypatch.setenv("APP_NAME", "订单服务")
-    monkeypatch.setenv("ENVIRONMENT", "prod")
-    monkeypatch.setenv("DEBUG", "false")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@db:5432/orders")
-    monkeypatch.setenv("SECRET_KEY", "super-secret-xyz")
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120")
-    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
-
-    s = Settings()
-
-    assert s.app_name == "订单服务"
-    assert s.environment == "prod"
-    assert s.debug is False                      # "false" → bool False
-    assert s.database_url == "postgresql://user:pass@db:5432/orders"
-    assert s.secret_key == "super-secret-xyz"
-    assert s.access_token_expire_minutes == 120  # "120" → int 120
-    assert s.redis_url == "redis://redis:6379/0"
-
-
-def test_settings_bool_variants(monkeypatch):
-    """【类型转换·细节】pydantic 对 bool 的多种字符串写法都识别。"""
-    for truthy in ("true", "True", "1", "yes", "on"):
-        monkeypatch.setenv("DEBUG", truthy)
-        assert Settings().debug is True, f"{truthy!r} 应判为 True"
-    for falsy in ("false", "False", "0", "no", "off"):
-        monkeypatch.setenv("DEBUG", falsy)
-        assert Settings().debug is False, f"{falsy!r} 应判为 False"
-
-
-def test_settings_env_not_case_sensitive(monkeypatch):
-    """【大小写不敏感】case_sensitive=False,DATABASE_URL / database_url 都能匹配。"""
-    monkeypatch.setenv("database_url", "mysql://localhost/test")  # 全小写
-    assert Settings().database_url == "mysql://localhost/test"
-
-
-def test_settings_invalid_int_raises(monkeypatch):
-    """【fail-fast】类型转换失败 → ValidationError(启动即报错,= Spring 启动校验)。"""
-    from pydantic import ValidationError
-
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "不是数字")
-    with pytest.raises(ValidationError):
-        Settings()
-
-
-# ---------- §22.3 get_settings 依赖(lru_cache 单例)----------
-
-
-def test_get_settings_is_cached(monkeypatch):
-    """【缓存】get_settings() 用 lru_cache,同进程内只构造一次 → 返回同一对象。"""
-    monkeypatch.setenv("APP_NAME", "缓存验证")
-    get_settings.cache_clear()          # 清缓存,保证本次读环境
-
-    s1 = get_settings()
-    s2 = get_settings()
-    assert s1 is s2                      # 同一实例(缓存生效)
-    assert s1.app_name == "缓存验证"
-
-
-def test_get_settings_cache_clear_rereads_env(monkeypatch):
-    """【清缓存重读】cache_clear() 后再调,会重新读环境变量。"""
-    monkeypatch.setenv("ENVIRONMENT", "dev")
     get_settings.cache_clear()
-    before = get_settings()
-    assert before.environment == "dev"
-
-    # 改环境变量,但没清缓存 → 仍是旧值
-    monkeypatch.setenv("ENVIRONMENT", "prod")
-    assert get_settings().environment == "dev"   # 缓存命中,不重读
-
-    # 清缓存 → 重读,拿到新值
-    get_settings.cache_clear()
-    after = get_settings()
-    assert after.environment == "prod"
-    assert before is not after                    # 新实例
-
-
-def test_settings_dependency_is_injectable():
-    """【依赖注入】Settings 可作为 FastAPI 依赖被注入(get_settings)。"""
-    # get_settings 返回的是 Settings 实例(类型正确,可被 Depends 使用)
-    get_settings.cache_clear()
-    settings = get_settings()
-    assert isinstance(settings, Settings)
-
-
-# ---------- §22.1 /health 端点 ----------
-
-
-def test_health_endpoint_returns_config():
-    """【端点】/health 用 Depends(get_settings) 注入配置,返回关键字段。
-
-    = Spring Boot Actuator 的 /actuator/health,K8s 探针打这个端点。
-    """
-    client = TestClient(app)
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    body = resp.json()
-
-    assert body["status"] == "ok"
-    assert "app" in body
-    assert "environment" in body
-    assert body["version"] == APP_VERSION
-    assert "debug" in body
-    # app_name 是 Settings.app_name 的值
-    assert body["app"] == Settings().app_name
-
-
-def test_health_reflects_env(monkeypatch):
-    """【端点反映环境】改环境变量 + 清缓存,/health 返回的 environment 随之变化。"""
-    monkeypatch.setenv("ENVIRONMENT", "staging")
-    monkeypatch.setenv("APP_NAME", "Staging API")
+    yield
     get_settings.cache_clear()
 
-    client = TestClient(app)
-    body = client.get("/health").json()
-    assert body["environment"] == "staging"
-    assert body["app"] == "Staging API"
 
-    get_settings.cache_clear()   # 收尾,避免污染后续测试
+# ---------- §22.2 容量规划 ----------
+
+
+class TestWorkerCountForCores:
+    def test_four_cores(self):
+        """【正常】4 核 → 2×4+1 = 9。"""
+        assert worker_count_for_cores(4) == 9
+
+    def test_single_core(self):
+        """【正常】1 核 → 3。"""
+        assert worker_count_for_cores(1) == 3
+
+    def test_eight_cores(self):
+        """【正常】8 核 → 17(拦住只写 2*n 忘了 +1 的实现)。"""
+        assert worker_count_for_cores(8) == 17
+
+    def test_zero_and_negative_fallback_to_one(self):
+        """【边界】0 核 / 负数 → 下限 1(总不能起 0 个进程)。"""
+        assert worker_count_for_cores(0) == 1
+        assert worker_count_for_cores(-2) == 1
+
+
+# ---------- §22.2 生成 gunicorn 命令 ----------
+
+
+class TestBuildGunicornCommand:
+    def test_typical_command(self):
+        """【正常】9 worker / 8000 端口的完整命令。"""
+        cmd = build_gunicorn_command("order_service.main:app", 9, 8000)
+        assert cmd == [
+            "gunicorn", "order_service.main:app",
+            "-w", "9",
+            "-k", "uvicorn.workers.UvicornWorker",
+            "-b", "0.0.0.0:8000",
+        ]
+
+    def test_another_port_and_workers(self):
+        """【正常】参数变化 → 命令对应位置变化(拦住硬编码)。"""
+        cmd = build_gunicorn_command("ch22_assignment:app", 3, 9000)
+        assert cmd[1] == "ch22_assignment:app"
+        assert cmd[cmd.index("-w") + 1] == "3"
+        assert cmd[cmd.index("-b") + 1] == "0.0.0.0:9000"
+
+    def test_all_elements_are_str(self):
+        """【边界】list 里必须全是 str(workers/port 要 str() 转换,不能直接放 int)。"""
+        cmd = build_gunicorn_command("a:app", 1, 1)
+        assert all(isinstance(x, str) for x in cmd)
+
+
+# ---------- §22.3 get_settings(lru_cache 单例)----------
+
+
+class TestGetSettings:
+    def test_returns_settings_instance(self):
+        """【正常】返回 Settings 实例,默认值正确。"""
+        s = get_settings()
+        assert isinstance(s, Settings)
+        assert s.app_name == "order-service"
+        assert s.environment == "dev"
+
+    def test_is_cached_same_instance(self):
+        """【缓存】同进程内两次调用返回同一对象(lru_cache 生效)。"""
+        assert get_settings() is get_settings()
+
+    def test_cache_clear_rereads_env(self, monkeypatch):
+        """【缓存】cache_clear() 后重读环境变量;不清则拿到旧值。"""
+        monkeypatch.setenv("ENVIRONMENT", "dev")
+        get_settings.cache_clear()
+        before = get_settings()
+        assert before.environment == "dev"
+
+        monkeypatch.setenv("ENVIRONMENT", "prod")
+        assert get_settings().environment == "dev"   # 缓存命中,不重读
+
+        get_settings.cache_clear()
+        after = get_settings()
+        assert after.environment == "prod"
+        assert before is not after
+
+
+# ---------- §22.3 配置脱敏 ----------
+
+
+class TestMaskSecret:
+    def test_normal_secret_shows_prefix_and_length(self):
+        """【正常】露前 4 位 + 总长。"""
+        assert mask_secret("super-secret-xyz") == "supe...(16 chars)"
+
+    def test_custom_visible(self):
+        """【正常】visible 可配(拦住写死 4 的实现)。"""
+        assert mask_secret("abcdefgh", visible=2) == "ab...(8 chars)"
+
+    def test_too_short_fully_masked(self):
+        """【边界】长度 <= visible 时全遮(露前 4 位就等于全露)。"""
+        assert mask_secret("abc") == "***"          # 3 < 4
+        assert mask_secret("abcd") == "***"         # 4 == 4,也全遮
+
+    def test_none_and_empty(self):
+        """【边界】None / 空串 → "(unset)"(区分「没配」和「配错」)。"""
+        assert mask_secret(None) == "(unset)"
+        assert mask_secret("") == "(unset)"
+
+
+# ---------- §22.3 脱敏后的启动配置 ----------
+
+
+class TestSafeConfigDict:
+    def test_secret_is_masked_others_plain(self):
+        """【正常】secret_key 被脱敏;非敏感字段原样保留。"""
+        d = safe_config_dict(Settings())
+        assert d["app_name"] == "order-service"
+        assert d["environment"] == "dev"
+        assert d["debug"] is True
+        assert d["secret_key"] == mask_secret(DEFAULT_SECRET_KEY) == "dev-...(20 chars)"
+        assert d["redis_url"] is None
+
+    def test_contains_all_fields(self):
+        """【正常】字段齐全(model_dump 全量导出)。"""
+        d = safe_config_dict(Settings())
+        assert set(d) == {
+            "app_name", "environment", "debug", "database_url",
+            "secret_key", "access_token_expire_minutes", "redis_url",
+        }
+
+    def test_real_secret_never_appears(self):
+        """【边界】真实密钥绝不出现在结果里(短密钥也不列外)。"""
+        d = safe_config_dict(Settings(secret_key="abc"))
+        assert d["secret_key"] == "***"
+        assert "abc" not in d.values()
+
+
+# ---------- §22.4 生成 docker run 命令 ----------
+
+
+class TestBuildDockerRunCommand:
+    def test_with_env_sorted(self):
+        """【正常】环境变量按 key 排序注入,镜像名在最后。"""
+        cmd = build_docker_run_command(
+            "order-service:1.0.0", 8000,
+            {"SECRET_KEY": "abc", "DATABASE_URL": "postgresql://db/orders"},
+        )
+        assert cmd == [
+            "docker", "run", "-d", "-p", "8000:8000",
+            "-e", "DATABASE_URL=postgresql://db/orders",
+            "-e", "SECRET_KEY=abc",
+            "order-service:1.0.0",
+        ]
+
+    def test_env_order_is_deterministic(self):
+        """【正常】不同插入顺序 → 同一命令(排序保证可 diff/可测)。"""
+        env1 = {"B": "2", "A": "1"}
+        env2 = {"A": "1", "B": "2"}
+        assert build_docker_run_command("img", 8000, env1) == \
+               build_docker_run_command("img", 8000, env2)
+
+    def test_without_env(self):
+        """【边界】env 为 None → 不带 -e,命令仍然完整。"""
+        cmd = build_docker_run_command("order-service:1.0.0", 8000)
+        assert cmd == ["docker", "run", "-d", "-p", "8000:8000", "order-service:1.0.0"]
+
+    def test_port_mapping_uses_given_port(self):
+        """【边界】宿主端口可变,容器端口固定 8000(拦住写死 8000:8000)。"""
+        cmd = build_docker_run_command("img", 9000)
+        assert cmd[cmd.index("-p") + 1] == "9000:8000"
+
+
+# ---------- §22.5 健康检查端点 ----------
+
+
+class TestHealth:
+    def test_returns_200_with_config(self):
+        """【正常】200 + status/app/environment/version/debug 五字段。"""
+        resp = TestClient(app).get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["app"] == "order-service"
+        assert body["environment"] == "dev"
+        assert body["version"] == APP_VERSION
+        assert body["debug"] is True
+
+    def test_reflects_env_after_cache_clear(self, monkeypatch):
+        """【正常】改环境变量 + 清缓存,/health 返回新配置。"""
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setenv("APP_NAME", "Staging API")
+        get_settings.cache_clear()
+
+        body = TestClient(app).get("/health").json()
+        assert body["environment"] == "staging"
+        assert body["app"] == "Staging API"
+
+    def test_version_is_constant(self):
+        """【边界】version 永远来自 APP_VERSION,不受环境变量影响。"""
+        body = TestClient(app).get("/health").json()
+        assert body["version"] == "1.0.0" == APP_VERSION
+
+
+# ---------- §22.6 上线前安全检查清单 ----------
+
+
+class TestCheckProductionReadiness:
+    def test_dev_defaults_only_warn_default_secret(self):
+        """【正常】全默认 dev 配置:只有「默认密钥」一条(dev 开 DEBUG/用 sqlite 不算问题)。"""
+        assert check_production_readiness(Settings()) == [
+            "SECRET_KEY 仍是开发默认值,必须更换",
+        ]
+
+    def test_prod_with_defaults_flags_three(self):
+        """【正常】默认配置直接上 prod:DEBUG + 默认密钥 + SQLite 三条,顺序固定。"""
+        assert check_production_readiness(Settings(environment="prod")) == [
+            "生产环境必须关闭 DEBUG",
+            "SECRET_KEY 仍是开发默认值,必须更换",
+            "生产环境不应使用 SQLite",
+        ]
+
+    def test_prod_ready_returns_empty(self):
+        """【正常】合格生产配置 → 空列表(可以上线)。"""
+        ok = Settings(
+            environment="prod", debug=False,
+            secret_key="x" * 32, database_url="postgresql://db/orders",
+        )
+        assert check_production_readiness(ok) == []
+
+    def test_short_secret_flagged_in_any_env(self):
+        """【边界】短密钥任何环境都拦;默认密钥(20 字符)不触发「太短」。"""
+        assert check_production_readiness(Settings(secret_key="abc")) == [
+            "SECRET_KEY 太短(至少 16 字符)",
+        ]
+        problems = check_production_readiness(Settings())
+        assert not any("太短" in p for p in problems)
+
+    def test_prod_sqlite_only_when_prod(self):
+        """【边界】staging 用 SQLite 不拦(只有 prod 拦)。"""
+        s = Settings(environment="staging", debug=False, secret_key="y" * 32)
+        assert check_production_readiness(s) == []

@@ -3,12 +3,13 @@ Ch38 作业测试。运行:
 
     uv run pytest 06_leetcode/ch38/test_ch38_assignment.py -v
 
-测试构造树用 build_tree(values)(按 LeetCode 层序,None 占位建树);
-LCA 测试用 find_node(root, val) 按 val 拿到节点引用。这两个 helper 是测试
-工具,不算作业。
+测试构造树用 build_tree(values)(按 LeetCode 层序,None 占位建树,读法见
+tutorial §38.1);LCA 测试用 find_node(root, val) 按 val 拿到节点引用;
+tree_to_level_list(root) 把树序列化回层序数组用于对比翻转结果。
+这三个 helper 是测试工具,不算作业。
 
-题目:LC104 / LC226 / LC98 / LC102 / LC236,每题一个 TestXxx 类,
-含正常 + 边界(空、单节点、LeetCode 官方示例)用例。
+题目:LC104 / LC226 / LC101 / LC98 / LC102 / LC199 / LC236,每题一个
+TestXxx 类,含正常 + 边界(空、单节点、斜链、LeetCode 官方示例)用例。
 """
 from __future__ import annotations
 
@@ -18,8 +19,10 @@ from ch38_assignment import (
     TreeNode,
     max_depth,
     invert_tree,
+    is_symmetric,
     is_valid_bst,
     level_order,
+    right_side_view,
     lowest_common_ancestor,
 )
 
@@ -74,7 +77,7 @@ def tree_to_level_list(root: TreeNode | None) -> list[int | None]:
     if root is None:
         return []
     out: list[int | None] = []
-    queue = [root]
+    queue: list[TreeNode | None] = [root]
     while queue:
         node = queue.pop(0)
         if node is None:
@@ -160,7 +163,7 @@ class TestInvertTree:
         assert inverted.right is not None and inverted.right.val == 1
 
     def test_in_place_modification(self):
-        # 翻转应原地修改同一棵树,返回同一根对象
+        # 翻转应原地修改同一棵树,返回同一根对象(新建树的实现过不了这关)
         root = build_tree([1, 2, 3])
         result = invert_tree(root)
         assert result is root  # 同一根引用
@@ -169,25 +172,75 @@ class TestInvertTree:
         #     1              1
         #    /               \
         #   2        ->       2
-        #  /                  /
-        # 3                  3
-        # 根:交换左(2)和右(None)→ 2 移到右边;
-        # 节点2:交换左(3)和右(None)→ 3 还在 2 的左边。
-        # 结果:1 的右孩子是 2,2 的左孩子是 3。
+        #  /                   \
+        # 3                     3
         root = build_tree([1, 2, None, 3])
         inverted = invert_tree(root)
-        # 直接结构断言(避开层序 None 占位的易错细节):
-        # 根交换:左(None) ↔ 右(node2);node2 交换:左(node3) ↔ 右(None)
-        # 结果:1 的右=2,2 的右=3(全右链)
         assert inverted.val == 1 and inverted.left is None
         assert inverted.right is not None and inverted.right.val == 2
         child = inverted.right
-        assert child.right is not None and child.right.val == 3
         assert child.left is None
+        assert child.right is not None and child.right.val == 3
 
 
 # ============================================================================
-# 3. LC98 · is_valid_bst
+# 3. LC101 · is_symmetric
+# ============================================================================
+class TestIsSymmetric:
+    def test_lc_example_true(self):
+        #        1
+        #       / \
+        #      2   2
+        #     / \ / \
+        #    3  4 4  3   -> True(同侧比较的实现会在这里误判 False)
+        root = build_tree([1, 2, 2, 3, 4, 4, 3])
+        assert is_symmetric(root) is True
+
+    def test_lc_example_false(self):
+        #     1
+        #    / \
+        #   2   2
+        #    \   \
+        #     3   3   -> False(两个 3 在同侧,都是右孩子)
+        root = build_tree([1, 2, 2, None, 3, None, 3])
+        assert is_symmetric(root) is False
+
+    def test_empty(self):
+        assert is_symmetric(None) is True
+
+    def test_single_node(self):
+        assert is_symmetric(TreeNode(1)) is True
+
+    def test_mirror_positions_true(self):
+        #     1
+        #    / \
+        #   2   2
+        #    \ /
+        #    3 3     -> True(2左.right=3 对 2右.left=3,交叉位置互为镜像)
+        root = build_tree([1, 2, 2, None, 3, 3, None])
+        assert is_symmetric(root) is True
+
+    def test_structure_asymmetric_false(self):
+        #     1
+        #    / \
+        #   2   2
+        #  /   /
+        # 2   2       -> False(2左有左孩子、2右有左孩子,位置不对称)
+        root = build_tree([1, 2, 2, 2, None, 2, None])
+        assert is_symmetric(root) is False
+
+    def test_value_asymmetric_false(self):
+        #     1
+        #    / \
+        #   2   2
+        #  /     \
+        # 3       4   -> False(位置对称但值 3 != 4)
+        root = build_tree([1, 2, 2, 3, None, None, 4])
+        assert is_symmetric(root) is False
+
+
+# ============================================================================
+# 4. LC98 · is_valid_bst
 # ============================================================================
 class TestIsValidBst:
     def test_valid_example(self):
@@ -241,11 +294,18 @@ class TestIsValidBst:
         assert is_valid_bst(root) is True
 
     def test_duplicate_value_invalid(self):
-        # BST 通常不允许等值;左右都 1 → 区间 (1,1) 不含 1 → False
+        # BST 不允许等值;开区间 low < val < high,等值 -> False
         #     1
         #    / \
         #   1   1
         root = build_tree([1, 1, 1])
+        assert is_valid_bst(root) is False
+
+    def test_duplicate_left_child_invalid(self):
+        #   1
+        #  /    左孩子也是 1(等值)-> False(闭区间实现会误判 True)
+        # 1
+        root = TreeNode(1, TreeNode(1))
         assert is_valid_bst(root) is False
 
     def test_skewed_valid(self):
@@ -253,9 +313,17 @@ class TestIsValidBst:
         root = build_tree([1, None, 2, None, None, None, 3])
         assert is_valid_bst(root) is True
 
+    def test_int_max_boundary(self):
+        # 节点值恰好等于 int32 上限:用 INT_MAX 当初始界的实现会误判 False
+        assert is_valid_bst(TreeNode(2**31 - 1)) is True
+
+    def test_int_min_boundary(self):
+        # 同理,int32 下限:用 INT_MIN 当初始下界的实现会误判 False
+        assert is_valid_bst(TreeNode(-(2**31))) is True
+
 
 # ============================================================================
-# 4. LC102 · level_order
+# 5. LC102 · level_order
 # ============================================================================
 class TestLevelOrder:
     def test_lc_example(self):
@@ -302,7 +370,55 @@ class TestLevelOrder:
 
 
 # ============================================================================
-# 5. LC236 · lowest_common_ancestor
+# 6. LC199 · right_side_view
+# ============================================================================
+class TestRightSideView:
+    def test_lc_example(self):
+        #     1
+        #    / \
+        #   2   3
+        #    \   \
+        #     5   4   -> [1,3,4](3 挡住 2,4 挡住 5)
+        root = build_tree([1, 2, 3, None, 5, None, 4])
+        assert right_side_view(root) == [1, 3, 4]
+
+    def test_empty(self):
+        assert right_side_view(None) == []
+
+    def test_single_node(self):
+        assert right_side_view(TreeNode(1)) == [1]
+
+    def test_left_side_visible_when_right_missing(self):
+        #     1
+        #    / \
+        #   2   3
+        #  /
+        # 4           -> [1,3,4](第 3 层只有左侧的 4,「一路贪右」实现会漏它)
+        root = build_tree([1, 2, 3, 4])
+        assert right_side_view(root) == [1, 3, 4]
+
+    def test_left_skewed(self):
+        # 全左链 1 -> 2 -> 3:每层唯一节点都看得到(贪右实现第一步就卡死)
+        root = TreeNode(1, TreeNode(2, TreeNode(3)))
+        assert right_side_view(root) == [1, 2, 3]
+
+    def test_right_skewed(self):
+        # 全右链 1 -> 2 -> 3
+        root = TreeNode(1, None, TreeNode(2, None, TreeNode(3)))
+        assert right_side_view(root) == [1, 2, 3]
+
+    def test_complete_tree(self):
+        #        1
+        #       / \
+        #      2   3
+        #     / \ / \
+        #    4  5 6  7   -> [1,3,7]
+        root = build_tree([1, 2, 3, 4, 5, 6, 7])
+        assert right_side_view(root) == [1, 3, 7]
+
+
+# ============================================================================
+# 7. LC236 · lowest_common_ancestor
 # ============================================================================
 class TestLowestCommonAncestor:
     def test_lc_example_split_at_root(self):
@@ -322,7 +438,7 @@ class TestLowestCommonAncestor:
         assert lca is not None and lca.val == 3
 
     def test_one_is_ancestor_of_other(self):
-        # 同一棵树:p=5, q=4。4 在 5 的子树里 → LCA=5
+        # 同一棵树:p=5, q=4。4 在 5 的子树里 → LCA=5(自己是自己的祖先)
         root = build_tree([3, 5, 1, 6, 2, 0, 8, None, None, 7, 4])
         p = find_node(root, 5)
         q = find_node(root, 4)
@@ -372,10 +488,19 @@ class TestLowestCommonAncestor:
         #     1
         #    / \
         #   2   3
-        # p=1(根), q=2(孩子) → LCA=1(根是孩子的祖先,自己也是自己的祖先)
+        # p=1(根), q=2(孩子) → LCA=1(根是孩子的祖先)
         root = build_tree([1, 2, 3])
         p = find_node(root, 1)
         q = find_node(root, 2)
         assert p is not None and q is not None
         lca = lowest_common_ancestor(root, p, q)
         assert lca is not None and lca.val == 1
+
+    def test_deep_left_chain(self):
+        # 1 -> 2 -> 3(全左链):p=2, q=3 → LCA=2(2 是 3 的祖先)
+        root = TreeNode(1, TreeNode(2, TreeNode(3)))
+        p = find_node(root, 2)
+        q = find_node(root, 3)
+        assert p is not None and q is not None
+        lca = lowest_common_ancestor(root, p, q)
+        assert lca is not None and lca.val == 2

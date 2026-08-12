@@ -1,156 +1,178 @@
 """
 Ch35 作业:双指针 / 滑动窗口(M6 LeetCode 实战)。
 
-本章是数组/字符串题的高频套路章。两类手法:
-  - **对撞双指针**:两端往中间走,每次按规则移动一头(LC11 盛水容器、LC15 三数之和)。
-  - **滑动窗口**:左右两指针夹一段「窗口」,右扩探索、左缩优化(LC3 无重复子串、LC76 最小覆盖子串)。
+数组/字符串题最高频的两类手法:
+  - **对撞双指针**:两端往中间走,每步按规则动一头(two_sum_sorted / max_area / three_sum)。
+  - **快慢指针**:都从左边出发,快的探路、慢的落定(move_zeroes)。
+  - **滑动窗口**:两指针夹一段「窗口」,右扩探索、左缩优化
+    (length_of_longest_substring / min_sub_array_len / min_window)。
   Python 的切片 + set / Counter 让窗口操作很简洁,Java 要手写 HashSet/HashMap。
 
-4 道经典题,纯 stdlib(set / collections.Counter)。在每处 TODO 写实现,然后:
+7 道题,纯 stdlib(set / collections.Counter)。在每处 TODO 写实现,然后:
 
     uv run pytest 06_leetcode/ch35/test_ch35_assignment.py -v
 
 全绿 = 你掌握了 Ch35 的双指针 / 滑动窗口套路。
+
+每题 docstring 顶部的【对应小节】指向 tutorial.md。卡住 → 回查对应 §。
 """
 from collections import Counter
 
 
-# ========== §35.2 对撞双指针原型(讲透,不出题) ==========
+# ========== §35.2 对撞双指针原型:two_sum_sorted ==========
 
 
 def two_sum_sorted(nums: list[int], target: int) -> list[int] | None:
     """
-    【对撞双指针原型 · §35.2】在【已排序】数组里找两个数之和等于 target,返回它们的值。
+    【对撞双指针原型 · §35.2】在【已排序】数组里找两个数之和等于 target,返回它们的值;不存在返回 None。
 
     示例:
         two_sum_sorted([1, 2, 3, 4, 6], 6)  -> [2, 4]
         two_sum_sorted([1, 2, 3, 9], 8)     -> None
+        two_sum_sorted([], 0)               -> None
 
-    思路(对撞双指针,左小则左进、右大则右退):
-        lo, hi = 0, len(nums) - 1
-        while lo < hi:
-            s = nums[lo] + nums[hi]
-            if s == target: return [nums[lo], nums[hi]]
-            if s < target: lo += 1
-            else:           hi -= 1
-        return None
+    提示(对撞双指针):
+        - lo, hi 分别从头、尾出发,循环条件是「两指针未相遇」。
+        - 当前和 < target:哪头动?(想想:右端已是当前最大,谁该「永久出局」)
+        - 当前和 > target:动另一头。相等即返回。
+        - 每步淘汰一个数,最多 n 步 → O(n) / O(1)。
     """
-    # TODO: 按上方「思路」实现(对撞双指针)
+    # TODO: 对撞双指针:lo/hi 夹逼,按「和 vs target」决定动哪头
     ...
 
 
-# ========== §35.3 LC11 盛最多水的容器:max_area ==========
+# ========== §35.3 快慢指针原地分区:move_zeroes(LC283) ==========
+
+
+def move_zeroes(nums: list[int]) -> list[int]:
+    """
+    【快慢指针 · §35.3 · LC283】把所有 0 移到末尾,非零元素保持相对顺序;【原地】修改并返回 nums。
+
+    示例:
+        move_zeroes([0, 1, 0, 3, 12])  -> [1, 3, 12, 0, 0]
+        move_zeroes([0, 0, 1])         -> [1, 0, 0]
+        move_zeroes([1, 2, 3])         -> [1, 2, 3]
+        move_zeroes([])                -> []
+
+    提示(快慢指针):
+        - slow = 下一个非零该落定的位置;fast 负责探路找非零。
+        - nums[fast] != 0 时,交换 nums[slow] 与 nums[fast](Python 元组交换一行),slow 前进一步。
+        - 循环不变式:nums[0..slow-1] 永远是「已就位的非零段」。
+        - 别遍历中 list.remove(O(n) 且跳元素);也别返回新数组(题目要求原地,测试会查)。
+        - O(n) / O(1)。
+    """
+    # TODO: 快慢指针:slow 落定、fast 探路,非零即交换并 slow += 1
+    ...
+
+
+# ========== §35.4 对撞 + 贪心:max_area(LC11) ==========
 
 
 def max_area(height: list[int]) -> int:
     """
-    【对撞双指针 · §35.3 · LC11】
+    【对撞双指针 · §35.4 · LC11】
     n 条竖线,第 i 条高度 height[i];两线 + x 轴围成容器,求最大盛水量。
     盛水 = 两线间距 * min(两线高度)(短板决定水位)。
 
     示例:
-        max_area([1,8,6,2,5,4,8,3,7])  -> 49
-        max_area([1,1])                -> 1
-        max_area([4,3,2,1,4])          -> 16
+        max_area([1, 8, 6, 2, 5, 4, 8, 3, 7])  -> 49
+        max_area([1, 1])                       -> 1
+        max_area([4, 3, 2, 1, 4])              -> 16
 
-    思路(对撞双指针,O(n)):
-        lo=0, hi=n-1, area=0
-        while lo < hi:
-            area = max(area, (hi-lo) * min(height[lo], height[hi]))
-            # 关键贪心:移动【较短】的一边——长边不动,因为换掉短边才可能变更大
-            if height[lo] < height[hi]: lo += 1
-            else:                       hi -= 1
-        return area
-
-    为什么移动短的?:面积 = 宽 * min(h_lo,h_hi),宽在缩小;只有 min(高度) 变大才可能扳回。
-    若移动长边,宽变小、min 不变(被短边卡死)→ 面积只会更小。故必须移动短边碰运气。
+    提示(对撞 + 贪心):
+        - lo/hi 从两端夹逼;每步用「宽 * min(两端高度)」更新最大值。
+        - 关键贪心:移动【较短】的一边。宽必然变小,只有 min(高度) 可能变大才有希望;
+          移动长边则 min 被短边卡死,面积只会更小(那批方案直接剪掉)。
+        - 注意:移动条件比的是【高度】,循环条件比的是【下标】,别混。
+        - O(n) / O(1)。
     """
-    # TODO: 按上方「思路」实现(对撞双指针,移动较短边)
+    # TODO: 对撞;每步 max(area, 宽*min(h));移动较短边
     ...
 
 
-# ========== §35.4 LC3 无重复字符的最长子串:length_of_longest_substring ==========
+# ========== §35.5 滑动窗口入门:length_of_longest_substring(LC3) ==========
 
 
 def length_of_longest_substring(s: str) -> int:
     """
-    【滑动窗口 · §35.4 · LC3】
-    找不含重复字符的最长子串的【长度】。
+    【滑动窗口 · §35.5 · LC3】找不含重复字符的最长子串的【长度】。
 
     示例:
         length_of_longest_substring("abcabcbb")  -> 3   # "abc"
         length_of_longest_substring("bbbbb")     -> 1   # "b"
         length_of_longest_substring("pwwkew")    -> 3   # "wke"
         length_of_longest_substring("")          -> 0
-        length_of_longest_substring(" ")         -> 1
-        length_of_longest_substring("au")        -> 2
 
-    思路(滑动窗口 + set,O(n)):
-        chars = set()           # 窗口内已出现的字符
-        left = 0                # 窗口左端(收缩用)
-        best = 0
-        for right, ch in enumerate(s):      # right = 窗口右端(扩张)
-            while ch in chars:              # 右端字符已在窗口里 → 重复了
-                chars.remove(s[left])       # 左端不断吐出,直到把【重复那个】踢掉
-                left += 1
-            chars.add(ch)                   # 现在窗口无重复,放心放入右端
-            best = max(best, right - left + 1)
-        return best
-
-    为什么对?:右指针只前进 n 次,左指针总共也只前进不超过 n 次(每个字符至多被 add/remove 各一次),
-    所以是 O(n),不是 O(n^2)。这是滑动窗口「均摊 O(1)」的精髓。
+    提示(滑动窗口 + set):
+        - 窗口 s[left..right] 始终保持无重复;set 存窗口内字符。
+        - for 右扩:若新字符已在 set 中,【while】左缩(remove s[left]、left+=1)直到不重复。
+          注意是 while 不是 if——可能要连吐好几个。
+        - 窗口合法后放入新字符,用「right - left + 1」更新 best。
+        - 均摊 O(n):right 走 n 次,left 全程总共也走 ≤ n 次(每个字符至多 add/remove 各一次)。
     """
-    # TODO: 按上方「思路」实现(滑动窗口 + set)
+    # TODO: 滑动窗口 + set;右扩、冲突 while 左缩、合法后更新 best
     ...
 
 
-# ========== §35.5 LC15 三数之和:three_sum ==========
+# ========== §35.6 窗口求「最短满足」:min_sub_array_len(LC209) ==========
+
+
+def min_sub_array_len(target: int, nums: list[int]) -> int:
+    """
+    【滑动窗口 · §35.6 · LC209】
+    【正整数】数组 nums,找和 >= target 的最短连续子数组,返回其长度;不存在返回 0。
+
+    示例:
+        min_sub_array_len(7, [2, 3, 1, 2, 4, 3])  -> 2   # [4,3]
+        min_sub_array_len(4, [1, 4, 4])           -> 1   # [4]
+        min_sub_array_len(11, [1, 1, 1, 1, 1, 1, 1, 1]) -> 0
+        min_sub_array_len(15, [1, 2, 3, 4, 5])    -> 5   # 整个数组
+
+    提示(滑动窗口 + 正数单调性):
+        - 窗口状态就是一个整数 window_sum:右扩 += nums[right]。
+        - 求「最短」,更新答案要写在收缩循环【里面】——每次 while 迭代窗口都合法,都要抢答。
+          (对比 LC3 求最长,更新写在 while 之后。)
+        - while window_sum >= target:更新 best → 吐掉 nums[left](-= 且 left+=1)。
+        - 哨兵 best = float('inf');最后「0 if best == inf else best」区分没找到。
+        - 正整数保证单调性(右扩只增、左缩只减),left 永不回头 → O(n) / O(1)。
+    """
+    # TODO: 右扩累加;while 和达标:内更新 best 并左缩;inf 哨兵,没找到返回 0
+    ...
+
+
+# ========== §35.7 排序 + 对撞:three_sum(LC15) ==========
 
 
 def three_sum(nums: list[int]) -> list[list[int]]:
     """
-    【排序 + 对撞双指针 · §35.5 · LC15】
-    找所有【不重复】的三元组 [a,b,c] 使 a+b+c == 0。
+    【排序 + 对撞双指针 · §35.7 · LC15】找所有【不重复】的三元组 [a,b,c] 使 a+b+c == 0。
 
     示例:
-        three_sum([-1,0,1,2,-1,-4])  -> [[-1,-1,2],[-1,0,1]]
-        three_sum([0,1,1])            -> []
-        three_sum([0,0,0])            -> [[0,0,0]]
-        three_sum([])                 -> []
+        three_sum([-1, 0, 1, 2, -1, -4])  -> [[-1, -1, 2], [-1, 0, 1]]
+        three_sum([0, 1, 1])              -> []
+        three_sum([0, 0, 0])              -> [[0, 0, 0]]
+        three_sum([])                     -> []
 
-    思路(排序 + 固定 i + 对撞 lo/hi,O(n^2)):
-        nums.sort()
-        res = []
-        for i in range(len(nums) - 2):
-            if i > 0 and nums[i] == nums[i-1]: continue   # 去重 i(跳过相同的首数)
-            lo, hi = i+1, len(nums)-1
-            while lo < hi:
-                s = nums[i] + nums[lo] + nums[hi]
-                if s == 0:
-                    res.append([nums[i], nums[lo], nums[hi]])
-                    while lo < hi and nums[lo]  == nums[lo+1]:  lo += 1   # 去重 lo
-                    while lo < hi and nums[hi]  == nums[hi-1]:  hi -= 1   # 去重 hi
-                    lo += 1; hi -= 1
-                elif s < 0: lo += 1
-                else:       hi -= 1
-        return res
-
-    两个去重关键:
-      1. 固定的 i:若 nums[i]==nums[i-1] 跳过(同首数的三元组上一轮已找全)。
-      2. 找到一组后,lo/hi 要越过相邻重复值,否则会塞进一模一样的三元组。
-    排序后三元组天然升序,直接 append 不用再排序去重。
+    提示(排序 + 固定 i + 对撞 lo/hi):
+        - 先 sort():对撞的前提是有序,且相同值相邻便于去重。
+        - 固定首数 nums[i],剩两数退化成 §35.2 的 two_sum_sorted(目标和 = -nums[i])。
+        - 去重有两处,缺一不可:
+          ① 固定 i:nums[i] == nums[i-1] 就跳过(看【身后】:同首数上一轮已找全);
+          ② 命中后:lo/hi 各自越过相邻重复值,再各前进一步(忘了会死循环)。
+        - 外层 range(n - 2):不足 3 个数自然返回 []。
+        - O(n²):外层 n × 内层对撞 n。
     """
-    # TODO: 按上方「思路」实现(排序 + 固定 i + 对撞 lo/hi,注意两处去重)
+    # TODO: sort → 固定 i(去重①)→ 对撞 lo/hi(命中后去重②再各走一步)
     ...
 
 
-# ========== §35.6 LC76 最小覆盖子串(Hard):min_window ==========
+# ========== §35.8 滑窗巅峰:min_window(LC76 · Hard) ==========
 
 
 def min_window(s: str, t: str) -> str:
     """
-    【滑动窗口 + Counter · §35.6 · LC76 · Hard】
-    找 s 中涵盖 t 所有字符(含重复)的【最短】子串;没有则返回 ""。
+    【滑动窗口 + Counter · §35.8 · LC76 · Hard】
+    找 s 中涵盖 t 所有字符(含重复次数)的【最短】子串;没有则返回 ""。
 
     示例:
         min_window("ADOBECODEBANC", "ABC")  -> "BANC"
@@ -158,38 +180,15 @@ def min_window(s: str, t: str) -> str:
         min_window("a", "aa")               -> ""   # s 里 a 不够
         min_window("a", "b")                -> ""
 
-    思路(右扩到满足 → 左缩到刚不满足 → 记录最短,O(|s|+|t|)):
-        need  = Counter(t)              # 还差多少个各字符
-        missing = len(t)                # 总共还差几个字符(= sum(need.values()) 的快表)
-        left = 0
-        start, length = 0, len(s) + 1   # 记录最优窗口(初值 length 设成「不可能大」)
-        for right, ch in enumerate(s):
-            # 1) 右扩:把 s[right] 纳入窗口
-            if need[ch] > 0:            # 这个字符是 t 需要的 → 减少一个缺口
-                missing -= 1
-            need[ch] -= 1               # 不管需不需要都 -1(负数=窗口里这种字符超了)
-            # 2) 已满足(t 全覆盖)→ 尝试左缩到【刚不满足】为止,沿途更新最短
-            while missing == 0:
-                if right - left + 1 < length:
-                    start, length = left, right - left + 1
-                need[s[left]] += 1      # 左端字符要出窗口
-                if need[s[left]] > 0:   # 出窗口后这种字符变成「缺」了 → 缺口 +1
-                    missing += 1
-                left += 1
-        return s[start:start+length] if length <= len(s) else ""
-
-    两个 Counter 技巧(Java 老手重点):
-      - need[ch] 正数=t 还差这个字符;0=刚好;负数=窗口里这种字符多出来了。
-      - missing 一个计数器管「总缺口」,避免每次 while 都 sum(need.values())。
+    提示(右扩到满足 → 左缩到刚不满足,记录最短):
+        - need = Counter(t):need[c] > 0 缺、== 0 刚好、< 0 冗余(Counter 读新 key 返回 0,不会 KeyError)。
+        - missing = len(t) 管「总缺口」,增量维护,避免每次 sum(need.values()):
+          右扩时【need[ch] > 0 才】missing -= 1(冗余字符不减少缺口),然后 need[ch] -= 1;
+          左缩时出窗口字符 need += 1,【变正才】missing += 1。
+        - missing == 0 时窗口合法:while 里更新最短(单独记 start/length,别用循环结束时的指针),
+          然后吐左端继续缩,直到「刚不满足」。
+        - 哨兵 length = len(s) + 1;最后「length <= len(s)」判是否找到过。
+        - O(|s| + |t|):right 走 |s| 次,left 全程 ≤ |s| 次。
     """
-    # TODO: 按上方「思路」实现(右扩到满足 → 左缩到刚不满足,记录最短)
+    # TODO: need/missing 增量维护;右扩、missing==0 时 while 左缩并记最短;哨兵区分没找到
     ...
-
-
-# ---------------------------------------------------------------------
-if __name__ == "__main__":
-    print("two_sum_sorted:", two_sum_sorted([1, 2, 3, 4, 6], 6))
-    print("max_area:", max_area([1, 8, 6, 2, 5, 4, 8, 3, 7]))
-    print("length_of_longest_substring:", length_of_longest_substring("abcabcbb"))
-    print("three_sum:", three_sum([-1, 0, 1, 2, -1, -4]))
-    print("min_window:", min_window("ADOBECODEBANC", "ABC"))
