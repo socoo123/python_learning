@@ -60,18 +60,18 @@ export default function CodeRunner({ chapter, shared }: Props) {
         <button
           onClick={handleRun}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg-base shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-bg-base shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "运行中…" : "▶ 运行测试"}
         </button>
         <button
           onClick={handleReset}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-card px-3 py-2 text-sm text-zinc-300 transition hover:bg-bg-elev disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-card px-3 py-2 text-sm text-drac-fg transition hover:bg-bg-elev disabled:opacity-50"
         >
           ↺ 重置
         </button>
-        <span className="ml-auto font-mono text-xs text-zinc-500">{chapter.testName}.py</span>
+        <span className="ml-auto font-mono text-xs text-drac-comment">{chapter.testName}.py</span>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border-subtle">

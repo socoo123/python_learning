@@ -76,7 +76,7 @@ export default function ChapterPage() {
 
   if (!module || !summary) {
     return (
-      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
+      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-drac-comment">
         章节不存在。<Link to="/" className="text-accent">返回首页</Link>
       </div>
     );
@@ -84,7 +84,7 @@ export default function ChapterPage() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
+      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-drac-comment">
         加载章节内容…
       </div>
     );
@@ -92,7 +92,7 @@ export default function ChapterPage() {
 
   if (loadError || !chapter) {
     return (
-      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-zinc-400">
+      <div className="rounded-lg border border-border-subtle bg-bg-card p-8 text-center text-drac-comment">
         章节内容加载失败。<Link to={`/m/${module.id}`} className="text-accent">返回模块</Link>
       </div>
     );
@@ -100,18 +100,18 @@ export default function ChapterPage() {
 
   return (
     <div className="space-y-8">
-      <nav className="text-sm text-zinc-500">
-        <Link to="/" className="hover:text-zinc-300">课程地图</Link>
+      <nav className="text-sm text-drac-comment">
+        <Link to="/" className="hover:text-drac-fg">课程地图</Link>
         <span className="mx-2">/</span>
-        <Link to={`/m/${module.id}`} className="hover:text-zinc-300">{module.title}</Link>
+        <Link to={`/m/${module.id}`} className="hover:text-drac-fg">{module.title}</Link>
         <span className="mx-2">/</span>
-        <span className="text-zinc-300">Ch{chapter.num}</span>
+        <span className="text-drac-fg">Ch{chapter.num}</span>
       </nav>
 
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle pb-5">
         <div>
           <div className="font-mono text-sm text-accent">第 {chapter.num} 课</div>
-          <h1 className="mt-1 text-2xl font-bold text-zinc-50">{chapter.title}</h1>
+          <h1 className="mt-1 text-2xl font-bold text-drac-fg">{chapter.title}</h1>
         </div>
         <RunModeBadge mode={chapter.runMode} />
       </header>
@@ -137,11 +137,11 @@ export default function ChapterPage() {
       ) : (
         <>
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-zinc-100">📖 教程</h2>
+            <h2 className="text-lg font-semibold text-drac-fg">📖 教程</h2>
             <MarkdownView>{chapter.tutorialMd}</MarkdownView>
           </section>
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-zinc-100">✏️ 作业</h2>
+            <h2 className="text-lg font-semibold text-drac-fg">✏️ 作业</h2>
             {chapter.runMode === "pyodide" ? (
               <CodeRunner key={chapter.id} chapter={chapter} shared={shared} />
             ) : (
@@ -153,8 +153,8 @@ export default function ChapterPage() {
 
       {chapter.reviewMd.trim() && (
         <details className="group rounded-lg border border-border-subtle bg-bg-card p-5">
-          <summary className="cursor-pointer list-none text-lg font-semibold text-zinc-100">
-            🧠 记忆闪卡 <span className="ml-2 text-xs font-normal text-zinc-500 group-open:hidden">点开复习</span>
+          <summary className="cursor-pointer list-none text-lg font-semibold text-drac-fg">
+            🧠 记忆闪卡 <span className="ml-2 text-xs font-normal text-drac-comment group-open:hidden">点开复习</span>
           </summary>
           <div className="mt-4">
             <Flashcards reviewMd={chapter.reviewMd} />
@@ -170,16 +170,16 @@ function LocalNotice({ chapter, moduleDir }: { chapter: { num: string }; moduleD
   return (
     <div className="rounded-lg border border-drac-orange/30 bg-drac-orange/5 p-6">
       <div className="font-semibold text-drac-orange">🔒 本章在本地运行</div>
-      <p className="mt-3 text-sm text-zinc-300">
+      <p className="mt-3 text-sm text-drac-fg">
         这章依赖系统/网络(FastAPI、数据库、subprocess、LLM API 等),浏览器内跑不了。
         请在本地仓库写实现,然后用下面命令跑测试。报错可在终端问 Claude。
       </p>
-      <ol className="mt-4 space-y-2 text-sm text-zinc-400">
+      <ol className="mt-4 space-y-2 text-sm text-drac-comment">
         <li>① 打开 <code className="rounded bg-bg-elev px-1.5 py-0.5 text-accent">{moduleDir}/ch{chapter.num}/ch{chapter.num}_assignment.py</code> 写实现</li>
         <li>② 终端运行:</li>
       </ol>
       <div className="mt-2 flex items-center gap-2 rounded-md border border-border-subtle bg-bg-card p-3">
-        <code className="flex-1 font-mono text-xs text-zinc-300">{cmd}</code>
+        <code className="flex-1 font-mono text-xs text-drac-fg">{cmd}</code>
         <CopyButton text={cmd} />
       </div>
     </div>
@@ -194,7 +194,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       })}
-      className="rounded border border-border-subtle px-2 py-1 text-xs text-zinc-300 hover:bg-bg-elev"
+      className="rounded border border-border-subtle px-2 py-1 text-xs text-drac-fg hover:bg-bg-elev"
     >
       {copied ? "已复制 ✓" : "复制"}
     </button>

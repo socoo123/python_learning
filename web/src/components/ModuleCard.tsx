@@ -15,15 +15,15 @@ export default function ModuleCard({ module, index }: { module: Module; index: n
         <span className="text-3xl font-bold text-border-strong">{String(index + 1).padStart(2, "0")}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            enabled ? "bg-emerald-500/15 text-emerald-400" : "bg-bg-elev text-zinc-500"
+            enabled ? "bg-drac-green/15 text-drac-green" : "bg-bg-elev text-drac-comment"
           }`}
         >
           {enabled ? "可学习" : "待生成"}
         </span>
       </div>
-      <h3 className="mt-4 text-lg font-semibold text-zinc-100">{module.title}</h3>
-      <p className="mt-1 text-sm text-zinc-400">{module.subtitle}</p>
-      <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
+      <h3 className="mt-4 text-lg font-semibold text-drac-fg">{module.title}</h3>
+      <p className="mt-1 text-sm text-drac-comment">{module.subtitle}</p>
+      <div className="mt-4 flex items-center gap-2 text-xs text-drac-comment">
         <span>{module.chapters.length} 章</span>
         {enabled && (
           <span className="ml-auto text-accent opacity-0 transition group-hover:opacity-100">进入 →</span>

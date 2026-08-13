@@ -1,20 +1,38 @@
 import type { Config } from "tailwindcss";
 
+/** 语义色走 CSS 变量(RGB 三通道),运行时随 [data-theme] 切换 */
+const v = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   darkMode: "class",
   theme: {
     extend: {
       colors: {
-        // 语义 token:近黑背景 + 高对比 + 饱和粉主强调
-        bg: { base: "#0d0e13", card: "#181a22", elev: "#23262f" },
-        border: { subtle: "#363a48", strong: "#8b90b8" },
-        accent: { DEFAULT: "#ff4fa3", muted: "#ff4fa3" }, // 饱和粉
-        // Dracula 原色(提亮 fg)
+        // 语义 token,随主题切换(护眼米色 / 德古拉深色)
+        bg: { base: v("--bg-base"), card: v("--bg-card"), elev: v("--bg-elev") },
+        border: { subtle: v("--border-subtle"), strong: v("--border-strong") },
+        accent: { DEFAULT: v("--accent"), muted: v("--accent") },
         drac: {
+          bg: v("--drac-bg"),
+          line: v("--drac-line"),
+          fg: v("--drac-fg"),
+          comment: v("--drac-comment"),
+          cyan: v("--drac-cyan"),
+          green: v("--drac-green"),
+          orange: v("--drac-orange"),
+          pink: v("--drac-pink"),
+          purple: v("--drac-purple"),
+          red: v("--drac-red"),
+          yellow: v("--drac-yellow"),
+        },
+        // 固定深色「代码岛」:编辑器 / 终端 / 代码块在两套主题下都保持深色,保证语法高亮一致
+        night: {
           bg: "#0d0e13",
-          line: "#44475a",
-          fg: "#ffffff",
+          card: "#14161d",
+          elev: "#23262f",
+          line: "#2e3140",
+          fg: "#f8f8f2",
           comment: "#7d83a8",
           cyan: "#8be9fd",
           green: "#50fa7b",

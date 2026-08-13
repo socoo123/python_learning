@@ -2,13 +2,48 @@ import { Routes, Route, Link, NavLink } from "react-router-dom";
 import Home from "./routes/Home";
 import ModulePage from "./routes/ModulePage";
 import ChapterPage from "./routes/ChapterPage";
+import { useTheme } from "./hooks/useTheme";
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const btn = (active: boolean) =>
+    `inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition ${
+      active ? "bg-accent/15 font-medium text-accent" : "text-drac-comment hover:text-drac-fg"
+    }`;
+  return (
+    <div
+      className="inline-flex items-center rounded-lg border border-border-subtle bg-bg-card p-0.5"
+      role="group"
+      aria-label="主题切换"
+    >
+      <button
+        type="button"
+        title="护眼米色"
+        aria-pressed={theme === "parchment"}
+        onClick={() => setTheme("parchment")}
+        className={btn(theme === "parchment")}
+      >
+        ☀️<span className="hidden sm:inline">护眼</span>
+      </button>
+      <button
+        type="button"
+        title="德古拉深色"
+        aria-pressed={theme === "dracula"}
+        onClick={() => setTheme("dracula")}
+        className={btn(theme === "dracula")}
+      >
+        🌙<span className="hidden sm:inline">德古拉</span>
+      </button>
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-bg-base text-zinc-200">
+    <div className="min-h-screen bg-bg-base text-drac-fg">
       <header className="sticky top-0 z-20 border-b border-border-subtle bg-bg-base/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="flex items-center gap-2 font-semibold text-zinc-100">
+          <Link to="/" className="flex items-center gap-2 font-semibold text-drac-fg">
             <span className="text-accent">🐍</span>
             <span>Python 全栈学习</span>
           </Link>
@@ -17,7 +52,7 @@ export default function App() {
               to="/"
               end
               className={({ isActive }) =>
-                `rounded-md px-3 py-1.5 ${isActive ? "bg-bg-elev text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`
+                `rounded-md px-3 py-1.5 ${isActive ? "bg-bg-elev text-drac-fg" : "text-drac-comment hover:text-drac-fg"}`
               }
             >
               课程地图
@@ -26,10 +61,11 @@ export default function App() {
               href="https://docs.python.org/3/"
               target="_blank"
               rel="noreferrer"
-              className="rounded-md px-3 py-1.5 text-zinc-400 hover:text-zinc-200"
+              className="rounded-md px-3 py-1.5 text-drac-comment hover:text-drac-fg"
             >
               Python 文档 ↗
             </a>
+            <ThemeToggle />
           </nav>
         </div>
       </header>
@@ -42,7 +78,7 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="mx-auto max-w-6xl px-6 py-10 text-center text-xs text-zinc-600">
+      <footer className="mx-auto max-w-6xl px-6 py-10 text-center text-xs text-drac-comment">
         Python 全栈学习 · 交互式课程 · 浏览器内运行(Pyodide)
       </footer>
     </div>

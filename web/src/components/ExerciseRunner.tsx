@@ -76,7 +76,7 @@ export default function ExerciseRunner({ chapter, shared, func, pyReady, onPyRea
         <button
           onClick={handleReset}
           disabled={busy}
-          className="rounded-md border border-border-subtle px-2 py-1.5 text-xs text-zinc-300 hover:bg-bg-elev disabled:opacity-50"
+          className="rounded-md border border-border-subtle px-2 py-1.5 text-xs text-drac-fg hover:bg-bg-elev disabled:opacity-50"
         >
           ↺ 重置
         </button>
