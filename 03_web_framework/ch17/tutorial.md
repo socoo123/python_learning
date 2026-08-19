@@ -72,11 +72,11 @@ def get_product(product_id: int):
     start = time.perf_counter()                 # 计时(每个端点抄一遍)
     try:
         if product_id not in PRODUCTS:
-            return JSONResponse(404, {"error": "NotFound", ...})   # 错误格式手写 N 处
+            return JSONResponse(status_code=404, content={"error": "NotFound", ...})  # 错误格式手写 N 处
         return PRODUCTS[product_id]
     except Exception as e:
         logger.exception("boom")                # 兜底(每个端点抄一遍)
-        return JSONResponse(500, {...})
+        return JSONResponse(status_code=500, content={...})
     finally:
         logger.info("耗时 %.2fms", (time.perf_counter() - start) * 1000)
 ```
@@ -209,7 +209,10 @@ chain.doFilter(req, res);
 @app.middleware("http")
 async def maintenance_guard(request: Request, call_next):
     if MAINTENANCE_MODE and request.url.path != "/health":
-        return JSONResponse(503, {"error": "Maintenance", "message": "系统维护中,请稍后重试"})
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Maintenance", "message": "系统维护中,请稍后重试"},
+        )
     return await call_next(request)
 ```
 
@@ -247,7 +250,9 @@ if MAINTENANCE_MODE:
     return response
 ```
 
-✅ **正确写法**:直接 `return JSONResponse(503, ...)`,不碰 `call_next`。
+✅ **正确写法**:直接 `return JSONResponse(status_code=503, content={...})`,不碰 `call_next`。
+
+> 🟡 **`JSONResponse` 第一位置参数是 `content`**,不是状态码。必须写关键字:`JSONResponse(status_code=503, content={...})`。写成 `JSONResponse(503, {...})` 会把 `503` 当成 body、`dict` 当成 status_code,直接 `TypeError`。
 
 > ✅ 做 `maintenance_guard`:`MAINTENANCE_MODE and path != "/health"` → 直接返回 503 JSON;否则 `return await call_next(request)`。只读模块级开关不需要 `global`(只有赋值才要)。
 
@@ -310,7 +315,7 @@ POST /products {"id": 1, ...}      -> 409 {"error": "Conflict", "message": "商�
 @app.get("/products/{product_id}")
 def get_product(product_id: int):
     if product_id not in PRODUCTS:
-        return JSONResponse(404, {"error": "NotFound", ...})   # 第 1 份拷贝;改格式要改 N 处
+        return JSONResponse(status_code=404, content={"error": "NotFound", ...})  # 第 1 份拷贝;改格式要改 N 处
 ```
 
 ✅ **正确写法**:端点 `raise NotFoundError(...)`,格式化交给全局处理器。
@@ -368,7 +373,7 @@ GET /boom
 ❌ **错误写法**(把异常细节直接塞给用户):
 
 ```python
-return JSONResponse(500, {"error": "InternalServerError", "message": str(exc)})
+return JSONResponse(status_code=500, content={"error": "InternalServerError", "message": str(exc)})
 # 用户看到 "磁盘满了" / "/data/shop/db.sqlite3 locked" / SQL 片段——等于把内部情报送出去
 ```
 

@@ -12,7 +12,7 @@
 | 4 | 业务异常(自定义)和程序异常(ValueError)怎么区分处理? | 业务异常(资源不存在/权限不足等业务规则)→ 4xx + 自定义处理器;程序异常(bug)→ 500 + 兜底处理器 + 记日志 | ⬜ |
 | 5 | CORS 怎么配?`allow_origins=["*"]` 有什么坑? | `app.add_middleware(CORSMiddleware, allow_origins=..., allow_methods=..., allow_headers=...)`。坑:`*` + `allow_credentials=True` 浏览器拒绝;生产限定具体域名 | ⬜ |
 | 6 | 未注册处理器的异常返回什么? | **500** Internal Server Error。生产应注册兜底 Exception 处理器,格式化 + 记日志 + 不暴露堆栈 | ⬜ |
-| 7 | 多个中间件的执行顺序? | 【后注册先执行】(洋葱最外层)。鉴权类要早注册(外层),保证在业务前拦 | ⬜ |
+| 7 | 多个中间件的执行顺序? | 【后注册 = 外层 = 先执行】(洋葱模型)。鉴权/维护开关要**后**注册才能拦在最外层;本章 `maintenance_guard` 就是最后注册 | ⬜ |
 
 ## 🎓 费曼自检
 

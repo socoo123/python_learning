@@ -245,7 +245,7 @@ def count_error_logs(lines: Iterable[str], keyword: str = "ERROR") -> int:
 
     提示:
         return sum(1 for line in lines if keyword in line)
-        (也可以复用你上面写的生成器:sum(1 for _ in iter_error_lines(lines)))
+        别复用 iter_error_lines:它写死过滤 "ERROR",keyword="WARN"/"INFO" 会全错。
     """
     # TODO: sum + 生成器表达式(圆括号,不是方括号!)
     ...

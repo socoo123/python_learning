@@ -32,8 +32,8 @@
 
 | 章节 | 网站呈现 |
 |------|---------|
-| **Pyodide 章节**:M1 全(Ch01-07)、M2 全(Ch08-12)、Ch23、Ch25、Ch26、M6 全(Ch34-40) | **完整交互**:教程 + Monaco 编辑器(预填 `...` 骨架)+ ▶ 运行(Pyodide 跑 pytest)+ 终端输出(红绿) |
-| **Local 章节**:M3 全(Ch13-22)、M5 全(Ch28-33)、Ch24、Ch27 | **只读教程** + 「🔒 本章在本地运行」徽章 + 仓库路径 + `uv run pytest ...` 命令;**无编辑器**(代码仍在本地 .py 文件里写) |
+| **Pyodide 章节**:M1 全(Ch01-07)、M2 全(Ch08-12)、Ch23、M6 全(Ch34-40) | **完整交互**:教程 + Monaco 编辑器(预填 `...` 骨架)+ ▶ 运行(Pyodide 跑 pytest)+ 终端输出(红绿) |
+| **Local 章节**:M3 全(Ch13-22)、M5 全(Ch28-33)、Ch24–27 | **只读教程** + 「🔒 本章在本地运行」徽章 + 仓库路径 + `uv run pytest ...` 命令;**无编辑器**(代码仍在本地 .py 文件里写) |
 
 > 可调:若希望 Local 章节完全不进网页(只保留 Pyodide 章节),砍掉即可——说一声。
 
@@ -59,7 +59,7 @@
   - `chapters/chXX.json`:单章全文(tutorial / assignment / test / review / sections),**课程页懒加载**
 - **`src/content/` 提交进 git** → 网站运行时只读它,**不依赖源仓库** → web/ 可独立 clone 运行 / 独立上传 GitHub。
 - 源课程更新 → 跑 `bun run build:content` 重新烘焙 → 提交 diff。
-- 判断 runMode:扫 `assignment.py` / `test_*.py` 的 import —— 出现 `fastapi`/`sqlalchemy`/`httpx`/`psutil`/`subprocess`/`urllib`/`anthropic`/`openai` → `local`;否则 `pyodide`。M5 目录强制 `local`。
+- 判断 runMode:扫 `assignment.py` / `test_*.py` 的 import —— 出现 `fastapi`/`sqlalchemy`/`httpx`/`psutil`/`typer`/`rich`/`schedule`/`anthropic`/`openai` 等(见烘焙脚本 `LOCAL_IMPORTS`) → `local`;否则 `pyodide`。M5 目录强制 `local`。Ch24–27 因 subprocess/psutil/typer/schedule 均为 Local;Ch23 仅 pathlib 故仍为 Pyodide。
 
 ## B.5 运行流程(Pyodide 章节)
 

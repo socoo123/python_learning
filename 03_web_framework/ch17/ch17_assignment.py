@@ -137,7 +137,7 @@ async def maintenance_guard(request: Request, call_next):
     提示:本中间件在 log_requests 之后注册 = 洋葱更外层,短路时 log_requests 都轮不到跑;
          只读 MAINTENANCE_MODE 不用 global(只有赋值才需要声明)。
     """
-    # TODO: 维护中且非 /health → 直接 return JSONResponse(503, ...);否则 return await call_next(request)
+    # TODO: 维护中且非 /health → 直接 return JSONResponse(status_code=503, content={...});否则 return await call_next(request)
     ...
 
 
@@ -163,7 +163,7 @@ def handle_not_found(request: Request, exc: NotFoundError):
     提示:exc 就是端点抛出的异常实例,属性 resource/id 直接用;
          统一格式 = 所有错误响应都是 {"error": 机器码, "message": 人话} 两键,前端只认这一套。
     """
-    # TODO: return JSONResponse(404, {"error": "NotFound", "message": ...})
+    # TODO: return JSONResponse(status_code=404, content={"error": "NotFound", "message": ...})
     ...
 
 
@@ -186,7 +186,7 @@ def handle_permission_denied(request: Request, exc: PermissionDeniedError):
 
     提示:403 = 已认证但没权限(Ch16 讲过 401 vs 403);message 直接拼 exc 的两个属性。
     """
-    # TODO: return JSONResponse(403, {"error": "PermissionDenied", "message": ...})
+    # TODO: return JSONResponse(status_code=403, content={"error": "PermissionDenied", "message": ...})
     ...
 
 
@@ -207,7 +207,7 @@ def handle_conflict(request: Request, exc: ConflictError):
     提示:409 Conflict = 请求本身合法,但和服务器现有资源冲突(如 id 撞了),
          比笼统的 400 更精确——REST 里创建冲突的标准码。
     """
-    # TODO: return JSONResponse(409, {"error": "Conflict", "message": ...})
+    # TODO: return JSONResponse(status_code=409, content={"error": "Conflict", "message": ...})
     ...
 
 
@@ -219,8 +219,11 @@ def handle_unexpected(request: Request, exc: Exception):
     任务:
       ① logger.error("未处理异常: %s %s", request.method, request.url.path, exc_info=exc)
          —— 服务端记完整堆栈(exc_info=exc 会带上 traceback)
-      ② return JSONResponse(500, {"error": "InternalServerError",
-                                  "message": "服务内部错误,请稍后重试"})
+      ② return JSONResponse(
+             status_code=500,
+             content={"error": "InternalServerError",
+                      "message": "服务内部错误,请稍后重试"},
+         )
          —— 给用户的只有通用话术,别把 str(exc) 放进去(泄露内部信息)
 
     示例:
@@ -231,7 +234,7 @@ def handle_unexpected(request: Request, exc: Exception):
     提示:测试用 TestClient(app, raise_server_exceptions=False) 才能看到 500 响应
          (默认 TestClient 会把服务端异常重新抛出,方便调试)。
     """
-    # TODO: logger.error(..., exc_info=exc) → return JSONResponse(500, 通用话术)
+    # TODO: logger.error(..., exc_info=exc) → return JSONResponse(status_code=500, content=通用话术)
     ...
 
 

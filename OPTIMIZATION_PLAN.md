@@ -118,10 +118,10 @@ cd web && bun run build:content
 
 | runMode | 章节 | web 呈现 |
 |---|---|---|
-| **Pyodide**（浏览器可跑） | M1 全（Ch01–07）、M2 全（Ch08–12）、Ch23、Ch25、Ch26、M6 全（Ch34–40） | 交错式：教程分节 + 每节嵌编辑器 + 单跑 `pytest path::TestXxx` |
-| **Local**（只读） | M3 全（Ch13–22）、M5 全（Ch28–33，强制）、Ch24、Ch27 | 只读教程 + 🔒 徽章 + `uv run pytest` 指引 |
+| **Pyodide**（浏览器可跑） | M1 全（Ch01–07）、M2 全（Ch08–12）、Ch23、M6 全（Ch34–40） | 交错式：教程分节 + 每节嵌编辑器 + 单跑 `pytest path::TestXxx` |
+| **Local**（只读） | M3 全（Ch13–22）、M5 全（Ch28–33，强制）、Ch24–27 | 只读教程 + 🔒 徽章 + `uv run pytest` 指引 |
 
-- Pyodide 章的 assignment/test **禁止** import：`fastapi`、`sqlalchemy`、`httpx`、`psutil`、`subprocess`、`urllib`、`anthropic`、`openai`（任一出现 → 自动判为 local）。
+- Pyodide 章的 assignment/test **禁止** import：`fastapi`、`sqlalchemy`、`httpx`、`psutil`、`subprocess`、`urllib`、`anthropic`、`openai`、`typer`、`rich`、`schedule`（任一出现 → 自动判为 local）。Ch25/Ch26 因 Typer/Rich/`schedule` 为 Local。
 - Local 章也要重烘焙（教程/题目展示仍来自源文件），只是没有在线编辑器。
 
 ---
@@ -167,7 +167,7 @@ cd web && bun run build:content
 | Ch21 | 认证授权 JWT | ✅ 2026-08-12 |
 | Ch22 | 部署：uvicorn / gunicorn / Docker + 框架对比 | ✅ 2026-08-12 |
 
-### M4 运维脚本（`04_devops_scripts/`，Ch23/25/26 Pyodide；Ch24/27 Local）
+### M4 运维脚本（`04_devops_scripts/`，Ch23 Pyodide；Ch24–27 Local）
 
 | 章 | 标题 | 状态 |
 |---|---|---|

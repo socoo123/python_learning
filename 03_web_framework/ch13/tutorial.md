@@ -290,7 +290,7 @@ except httpx.HTTPStatusError as e:
 ```python
 get_product_or_none(client, "/api/products/1")     # {"id": 1, "name": "机械键盘", ...}
 get_product_or_none(client, "/api/products/999")   # None(已下架,业务上正常)
-get_product_or_none(client, "/api/products/1")     # 商品中心 500 → HTTPStatusError 抛出
+get_product_or_none(client, "/api/internal/error") # 商品中心 500 → HTTPStatusError 抛出
 ```
 
 > 💡 顺带认识 2xx 家族:`200` 查询/更新成功、`201` 创建成功、`204` 删除成功(无 body,见 §13.6)。`raise_for_status` 对它们全部放行。
@@ -586,7 +586,7 @@ def handler(request):
 
 最后一题把整章串起来,也是 SYLLABUS 点名的实战场景。
 
-**场景**:运营要一份「各类目货品汇总」——订单服务从商品中心拉全量商品,按 `category` 分组,输出每个类目的**商品数**和**库存总价**,按总价**降序**。这就是「调 API + M1 数据处理」的最小真实闭环。
+**场景**:运营要一份「各类目货品汇总」——订单服务从商品中心拉全量商品,按 `category` 分组,输出每个类目的**商品数**和**售价合计**(Σ `price`,不是库存金额 `price × stock`),按合计**降序**。这就是「调 API + M1 数据处理」的最小真实闭环。
 
 ### 思路分解(全是旧知识)
 

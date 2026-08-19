@@ -310,7 +310,7 @@ class TestIsValidBst:
 
     def test_skewed_valid(self):
         # 全右链 1 -> 2 -> 3,合法 BST
-        root = build_tree([1, None, 2, None, None, None, 3])
+        root = build_tree([1, None, 2, None, 3])
         assert is_valid_bst(root) is True
 
     def test_int_max_boundary(self):

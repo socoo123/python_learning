@@ -417,20 +417,34 @@ response = client.messages.create(
 # 直接拿到结构化决策，不用 parse_action
 ```
 
-把原生 tool use 接到本章的 `run_agent_loop` 上，decider 大概是：
+把原生 tool use 接到作业同一套「决策 → 调工具 → 观察」循环上，**不能**把观察拍成普通 user 文本（`观察:{obs}`）。Anthropic 要求：assistant 这一轮必须原样带回 `tool_use`（含 `id`），下一轮 user 必须回带 `tool_use_id` 的 `tool_result`，否则真 API 会拒收。
 
 ```python
-def llm_decider(query, observations):
-    msg = [{"role": "user", "content": query}]
-    for obs in observations:
-        msg.append({"role": "user", "content": f"观察:{obs}"})
-    resp = client.messages.create(model="claude-sonnet-4-5", max_tokens=1024,
-                                  tools=tools, messages=msg)
-    for block in resp.content:
-        if block.type == "tool_use":                    # 结构化，不解析文本
-            return {"type": "tool", "name": block.name, "args": block.input}
-    return {"type": "answer", "text": resp.content[0].text}
+def run_native_tool_loop(query: str, registry: dict, max_iters: int = 5) -> str:
+    messages = [{"role": "user", "content": query}]
+    for _ in range(max_iters):
+        resp = client.messages.create(
+            model="claude-sonnet-4-5", max_tokens=1024,
+            tools=tools, messages=messages,
+        )
+        tool_uses = [b for b in resp.content if b.type == "tool_use"]
+        if not tool_uses:                              # 模型给了最终文本 → 收工
+            texts = [b.text for b in resp.content if getattr(b, "text", None)]
+            return texts[0] if texts else ""
+        messages.append({"role": "assistant", "content": resp.content})  # ① 原样回写 tool_use
+        results = []
+        for block in tool_uses:
+            obs = execute_tool(registry, block.name, block.input)       # 复用本章 execute_tool
+            results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,               # ② 必须对上,否则 API 报错
+                "content": str(obs),
+            })
+        messages.append({"role": "user", "content": results})
+    return "(达到 max_iters)"
 ```
+
+作业里的 FakeDecider 不受这套协议约束;接真 API 时走上面这个循环,不要自己把观察拼成 `"观察:..."` 文本。
 
 **对比教学版**：
 

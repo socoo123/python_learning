@@ -185,7 +185,7 @@ def aggregate_by_category(client: httpx.Client, url: str) -> list[dict]:
     """
     【综合 · §13.10】拉全量商品,按 category 分组统计,返回报表(按总价降序)。
 
-    场景:运营要「各类目货品汇总」——每个类目的商品数和库存总价,贵的类目排前面。
+    场景:运营要「各类目货品汇总」——每个类目的商品数和售价合计(Σ price,不是 price×stock),贵的类目排前面。
 
     示例:
         # 商品中心返回 products.json 的 10 条商品时:

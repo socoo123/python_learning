@@ -12,7 +12,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # 设工作目录
 WORKDIR /app
 
-# 打开 bytecode 编译(--system 表示直接装到系统解释器,不建额外 venv)
+# UV_COMPILE_BYTECODE=1:安装时顺便写 .pyc,容器冷启动少一次编译
+# UV_LINK_MODE=copy:把包拷进 .venv(不用硬链接,Docker 层更稳)
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 # 关键:先只拷 pyproject.toml + uv.lock,利用 Docker 层缓存。

@@ -25,7 +25,7 @@
 |--------|----------|-----------|
 | `LogParseError` | §6.1 | 自定义异常(继承 Exception) |
 | `parse_log_line` | §6.2 | try/except + EAFP + 自定义异常 |
-| `parse_log_file` | §6.3 | pathlib 读文件 + for-else 逐行解析 |
+| `parse_log_file` | §6.3 | pathlib 读文件 + 单行容错 |
 | `build_summary` | §6.4 | raise from + try/except/else |
 | `write_report` | §6.5 | with open() 写文件 |
 | `Timer` | §6.6 | 类版上下文管理器(__enter__/__exit__) |
@@ -84,7 +84,7 @@ BaseException                    Throwable
 |--------|---------|-----------|
 | `ValueError` | 值不合法(`int("abc")`) | `IllegalArgumentException` |
 | `KeyError` | 字典键不存在(`d["x"]`) | `Map.get` 返回 null(不抛!) |
-| `TypeError` | 类型操作错(`"a" + 1`) | `ClassCastException` |
+| `TypeError` | 类型操作错(`"a" + 1`) | Java `"a"+1` 是拼接得 `"a1"`,不抛;强制转型失败才是 `ClassCastException` |
 | `FileNotFoundError` | 文件不存在 | `FileNotFoundException`(checked) |
 | `ZeroDivisionError` | 除以零 | `ArithmeticException` |
 | `IndexError` | 列表越界 | `IndexOutOfBoundsException` |
@@ -213,7 +213,7 @@ except:                  # ❌ 连 KeyboardInterrupt / SystemExit 都捕了
 
 ---
 
-## §6.3 pathlib 读文件 + for-else 逐行解析(对应:`parse_log_file`)🟡
+## §6.3 pathlib 读文件 + 单行容错(对应:`parse_log_file`)🟡
 
 ### `pathlib.Path`:现代文件 API
 
