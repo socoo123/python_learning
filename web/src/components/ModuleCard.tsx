@@ -1,8 +1,13 @@
 import { Link } from "react-router-dom";
 import type { Module } from "../types";
+import { useLearnerProgress } from "../hooks/useLearnerProgress";
+import ProgressBar from "./ProgressBar";
 
 export default function ModuleCard({ module, index }: { module: Module; index: number }) {
   const enabled = module.available;
+  const { moduleDone } = useLearnerProgress();
+  const { done, total } = moduleDone(module.id);
+
   const inner = (
     <div
       className={`group relative h-full overflow-hidden rounded-xl border p-5 transition ${
@@ -15,19 +20,28 @@ export default function ModuleCard({ module, index }: { module: Module; index: n
         <span className="text-3xl font-bold text-border-strong">{String(index + 1).padStart(2, "0")}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            enabled ? "bg-drac-green/15 text-drac-green" : "bg-bg-elev text-drac-comment"
+            !enabled
+              ? "bg-bg-elev text-drac-comment"
+              : done === total && total > 0
+                ? "bg-drac-green/15 text-drac-green"
+                : "bg-accent/15 text-accent"
           }`}
         >
-          {enabled ? "可学习" : "待生成"}
+          {!enabled ? "待生成" : done === total && total > 0 ? "已学完" : "可学习"}
         </span>
       </div>
       <h3 className="mt-4 text-lg font-semibold text-drac-fg">{module.title}</h3>
       <p className="mt-1 text-sm text-drac-comment">{module.subtitle}</p>
-      <div className="mt-4 flex items-center gap-2 text-xs text-drac-comment">
-        <span>{module.chapters.length} 章</span>
-        {enabled && (
-          <span className="ml-auto text-accent opacity-0 transition group-hover:opacity-100">进入 →</span>
+      <div className="mt-4 space-y-2">
+        {enabled && total > 0 && (
+          <ProgressBar value={done} max={total} size="sm" label="已学" />
         )}
+        <div className="flex items-center gap-2 text-xs text-drac-comment">
+          {!enabled && <span>{module.chapters.length} 章</span>}
+          {enabled && (
+            <span className="ml-auto text-accent opacity-0 transition group-hover:opacity-100">进入 →</span>
+          )}
+        </div>
       </div>
     </div>
   );

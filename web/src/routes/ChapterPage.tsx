@@ -1,53 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getChapterSummary, getModule, loadChapter, shared } from "../data/curriculum";
-import type { Chapter, FuncDef } from "../types";
+import { getChapterSummary, getModule, loadChapter } from "../data/curriculum";
+import type { Chapter } from "../types";
 import MarkdownView from "../components/MarkdownView";
-import CodeRunner from "../components/CodeRunner";
-import ExerciseRunner from "../components/ExerciseRunner";
-import RunModeBadge from "../components/RunModeBadge";
 import Flashcards from "../components/Flashcards";
-
-type Block = { type: "md"; text: string } | { type: "exercise"; func: FuncDef };
-
-/** 把分节合成渲染块:连续无练习的小节合并成一段 markdown,有练习的小节单独成块后跟练习。 */
-function buildBlocks(chapter: Chapter): Block[] {
-  const blocks: Block[] = [];
-  let mdBuf = "";
-  const flush = () => {
-    if (mdBuf.trim()) blocks.push({ type: "md", text: mdBuf });
-    mdBuf = "";
-  };
-  for (const s of chapter.sections) {
-    const secMd = (s.heading ? `## ${s.heading}\n\n` : "") + s.body;
-    if (s.exerciseFunctions.length) {
-      flush();
-      blocks.push({ type: "md", text: secMd });
-      for (const fname of s.exerciseFunctions) {
-        const f = chapter.functions.find((x) => x.name === fname);
-        if (f) blocks.push({ type: "exercise", func: f });
-      }
-    } else {
-      mdBuf += secMd + "\n\n";
-    }
-  }
-  flush();
-  return blocks;
-}
+import ChapterCompleteToggle from "../components/ChapterCompleteToggle";
+import { useLearnerProgress } from "../hooks/useLearnerProgress";
 
 export default function ChapterPage() {
   const { moduleId, chapterId } = useParams();
   const module = moduleId ? getModule(moduleId) : undefined;
   const summary = moduleId && chapterId ? getChapterSummary(moduleId, chapterId) : undefined;
+  const { isComplete } = useLearnerProgress();
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [pyReady, setPyReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setChapter(null);
-    setPyReady(false);
     setLoadError(false);
 
     if (!summary || !chapterId) {
@@ -113,43 +84,20 @@ export default function ChapterPage() {
           <div className="font-mono text-sm text-accent">第 {chapter.num} 课</div>
           <h1 className="mt-1 text-2xl font-bold text-drac-fg">{chapter.title}</h1>
         </div>
-        <RunModeBadge mode={chapter.runMode} />
+        {isComplete(chapter.id) && (
+          <span className="rounded-full bg-drac-green/15 px-2.5 py-0.5 text-xs font-medium text-drac-green">
+            ✓ 已学完
+          </span>
+        )}
       </header>
 
-      {/* 正文:交错式 / 回退 / 本地 */}
-      {chapter.interleaved ? (
-        <div className="space-y-2">
-          {buildBlocks(chapter).map((b, i) =>
-            b.type === "md" ? (
-              <MarkdownView key={i}>{b.text}</MarkdownView>
-            ) : (
-              <ExerciseRunner
-                key={`ex-${b.func.name}`}
-                chapter={chapter}
-                shared={shared}
-                func={b.func}
-                pyReady={pyReady}
-                onPyReady={() => setPyReady(true)}
-              />
-            )
-          )}
-        </div>
-      ) : (
-        <>
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-drac-fg">📖 教程</h2>
-            <MarkdownView>{chapter.tutorialMd}</MarkdownView>
-          </section>
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-drac-fg">✏️ 作业</h2>
-            {chapter.runMode === "pyodide" ? (
-              <CodeRunner key={chapter.id} chapter={chapter} shared={shared} />
-            ) : (
-              <LocalNotice chapter={chapter} moduleDir={module.dir} />
-            )}
-          </section>
-        </>
-      )}
+      <section className="space-y-3">
+        <MarkdownView>{chapter.tutorialMd}</MarkdownView>
+      </section>
+
+      <AssignmentHint chapterNum={chapter.num} moduleDir={module.dir} runMode={chapter.runMode} />
+
+      <ChapterCompleteToggle chapterId={chapter.id} />
 
       {chapter.reviewMd.trim() && (
         <details className="group rounded-lg border border-border-subtle bg-bg-card p-5">
@@ -165,20 +113,28 @@ export default function ChapterPage() {
   );
 }
 
-function LocalNotice({ chapter, moduleDir }: { chapter: { num: string }; moduleDir: string }) {
-  const cmd = `uv run pytest ${moduleDir}/ch${chapter.num}/test_ch${chapter.num}_assignment.py -v`;
+function AssignmentHint({
+  chapterNum,
+  moduleDir,
+  runMode,
+}: {
+  chapterNum: string;
+  moduleDir: string;
+  runMode: "pyodide" | "local";
+}) {
+  const file = `${moduleDir}/ch${chapterNum}/ch${chapterNum}_assignment.py`;
+  const cmd = `uv run pytest ${moduleDir}/ch${chapterNum}/test_ch${chapterNum}_assignment.py -v`;
   return (
-    <div className="rounded-lg border border-drac-orange/30 bg-drac-orange/5 p-6">
-      <div className="font-semibold text-drac-orange">🔒 本章在本地运行</div>
-      <p className="mt-3 text-sm text-drac-fg">
-        这章依赖系统/网络(FastAPI、数据库、subprocess、LLM API 等),浏览器内跑不了。
-        请在本地仓库写实现,然后用下面命令跑测试。报错可在终端问 Claude。
+    <div className="rounded-lg border border-border-subtle bg-bg-card p-5">
+      <div className="font-semibold text-drac-fg">✏️ 作业在仓库里写</div>
+      <p className="mt-2 text-sm text-drac-comment">
+        网页只读教程。实现写在五件套的 assignment 文件里，用 pytest 验证。
+        {runMode === "local" ? " 本章依赖系统/网络库，先按模块 README 做 uv sync --extra。" : ""}
       </p>
-      <ol className="mt-4 space-y-2 text-sm text-drac-comment">
-        <li>① 打开 <code className="rounded bg-bg-elev px-1.5 py-0.5 text-accent">{moduleDir}/ch{chapter.num}/ch{chapter.num}_assignment.py</code> 写实现</li>
-        <li>② 终端运行:</li>
-      </ol>
-      <div className="mt-2 flex items-center gap-2 rounded-md border border-border-subtle bg-bg-card p-3">
+      <p className="mt-3 text-sm text-drac-fg">
+        打开 <code className="rounded bg-bg-elev px-1.5 py-0.5 text-accent">{file}</code>
+      </p>
+      <div className="mt-2 flex items-center gap-2 rounded-md border border-border-subtle bg-bg-base p-3">
         <code className="flex-1 font-mono text-xs text-drac-fg">{cmd}</code>
         <CopyButton text={cmd} />
       </div>
@@ -190,10 +146,13 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      onClick={() => navigator.clipboard?.writeText(text).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })}
+      type="button"
+      onClick={() =>
+        navigator.clipboard?.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+      }
       className="rounded border border-border-subtle px-2 py-1 text-xs text-drac-fg hover:bg-bg-elev"
     >
       {copied ? "已复制 ✓" : "复制"}

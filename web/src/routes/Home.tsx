@@ -1,27 +1,41 @@
 import ModuleCard from "../components/ModuleCard";
+import ProgressBar from "../components/ProgressBar";
 import { modules } from "../data/curriculum";
+import { useLearnerProgress } from "../hooks/useLearnerProgress";
+import { LEARNER_FILE_HINT } from "../lib/learnerState";
 
 export default function Home() {
   const available = modules.filter((m) => m.available).length;
-  const totalChapters = modules.reduce((n, m) => n + m.chapters.length, 0);
+  const { completedCount, totalChapters, persistence } = useLearnerProgress();
 
   return (
     <div className="space-y-12">
       <section className="relative overflow-hidden rounded-2xl border border-border-subtle bg-gradient-to-b from-bg-card to-bg-base p-8 sm:p-12">
         <div className="absolute right-6 top-6 select-none text-7xl opacity-10">🐍</div>
-        <p className="text-sm font-medium text-accent">交互式 Python 课程</p>
+        <p className="text-sm font-medium text-accent">Python 全栈课程</p>
         <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight text-drac-fg sm:text-4xl">
           从 Java 老手到 Python 全栈
-          <span className="text-accent"> · 浏览器内写代码、跑测试</span>
+          <span className="text-accent"> · 网页读教程，仓库写作业</span>
         </h1>
         <p className="mt-4 max-w-2xl text-drac-comment">
-          40 章 / 6 大模块。点开模块看每节课的教程,直接在网页里写作业、点运行看 pytest 红绿。
-          纯 Python 章节浏览器内即时跑;依赖系统的章节给出本地运行命令。
+          40 章 / 6 大模块。网页只展示教程和闪卡；作业在仓库五件套里写，用 uv pytest 验证。
         </p>
         <div className="mt-6 flex flex-wrap gap-6 text-sm">
           <Stat label="模块" value={`${available} / ${modules.length}`} />
-          <Stat label="已开放章节" value={`${totalChapters}`} />
-          <Stat label="运行方式" value="Pyodide · 本地" />
+          <Stat label="已学章节" value={`${completedCount} / ${totalChapters}`} />
+          <Stat label="作业" value="本地 pytest" />
+        </div>
+        <div className="mt-6 max-w-xl">
+          <ProgressBar
+            value={completedCount}
+            max={totalChapters}
+            label="总进度"
+          />
+          <p className="mt-2 text-xs text-drac-comment">
+            {persistence === "file"
+              ? `学习进度写入 ${LEARNER_FILE_HINT}，刷新不会丢。`
+              : "进度存在本机浏览器；用 bun run dev 打开时会额外写入本地文件。"}
+          </p>
         </div>
       </section>
 
@@ -38,8 +52,8 @@ export default function Home() {
         <h2 className="mb-4 text-lg font-semibold text-drac-fg">怎么学</h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <Step n="1" title="读教程" desc="每节教程对比 Java 讲透,讲过的才考。" />
-          <Step n="2" title="写作业" desc="网页编辑器里填实现,点「运行测试」。" />
-          <Step n="3" title="看红绿" desc="pytest 即时反馈,全绿即掌握,存闪卡。" />
+          <Step n="2" title="写作业" desc="在仓库 assignment 文件里填实现,不要在网页里写。" />
+          <Step n="3" title="跑测试" desc="uv run pytest 全绿即掌握,再勾选「已学完」。" />
         </div>
       </section>
     </div>

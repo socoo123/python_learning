@@ -3,6 +3,8 @@ import Home from "./routes/Home";
 import ModulePage from "./routes/ModulePage";
 import ChapterPage from "./routes/ChapterPage";
 import { useTheme } from "./hooks/useTheme";
+import { useLearnerProgress } from "./hooks/useLearnerProgress";
+import ProgressBar from "./components/ProgressBar";
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -47,6 +49,7 @@ export default function App() {
             <span className="text-accent">🐍</span>
             <span>Python 全栈学习</span>
           </Link>
+          <HeaderProgress />
           <nav className="ml-auto flex items-center gap-1 text-sm">
             <NavLink
               to="/"
@@ -79,8 +82,25 @@ export default function App() {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 py-10 text-center text-xs text-drac-comment">
-        Python 全栈学习 · 交互式课程 · 浏览器内运行(Pyodide)
+        Python 全栈学习 · 教程只读 · 作业在仓库里写
       </footer>
     </div>
+  );
+}
+
+function HeaderProgress() {
+  const { completedCount, totalChapters } = useLearnerProgress();
+  if (totalChapters <= 0) return null;
+  return (
+    <Link
+      to="/"
+      className="hidden min-w-0 max-w-[14rem] flex-1 sm:block"
+      title={`已学 ${completedCount} / ${totalChapters} 章`}
+    >
+      <div className="mb-1 font-mono text-[11px] text-drac-comment">
+        进度 {completedCount}/{totalChapters}
+      </div>
+      <ProgressBar value={completedCount} max={totalChapters} size="sm" />
+    </Link>
   );
 }

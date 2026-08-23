@@ -3,7 +3,10 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ThemeProvider } from "./hooks/useTheme";
+import { hydrateLearnerState } from "./lib/learnerState";
 import "./styles/globals.css";
+
+void hydrateLearnerState();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

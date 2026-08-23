@@ -3,3 +3,5 @@ dist
 *.local
 .vscode
 .DS_Store
+.learner-state.json
+*.tsbuildinfo
