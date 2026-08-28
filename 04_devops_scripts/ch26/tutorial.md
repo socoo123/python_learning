@@ -64,10 +64,34 @@
 
 监控脚本的核心是**聚合 + 阈值**,不是「单条告警」——单条 5xx 可能只是某个用户网抖了一下,**聚合后超阈值**才说明系统真出问题了:
 
+```mermaid
+flowchart TB
+    logs["日志流"] --> parse["逐行解析 · extract_ts_status"]
+
+    subgraph assemble["alert_on_spikes 组装"]
+        direction TB
+        agg["按分钟聚合 5xx · count_5xx_per_minute"]
+        spike["找超阈值分钟 · find_spike_minutes"]
+        alert["生成告警 dict · build_alert_message"]
+        agg --> spike
+        spike --> alert
+    end
+
+    parse --> agg
+    alert --> report["格式化报告 · format_report"]
+    report --> sched["定时跑 · schedule_job"]
+
+    style logs fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style parse fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style assemble fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style agg fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style spike fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style alert fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style report fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style sched fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
 ```
-日志流 ──► 逐行解析 ──► 按分钟聚合 5xx ──► 找超阈值分钟 ──► 生成告警 ──► 格式化报告 ──► 定时跑
-        extract_ts_status  count_5xx_per_minute  find_spike_minutes  build_alert   format_report  schedule
-```
+
+**这张图要你看懂：** 日志先解析再按分钟聚合 5xx，只有超阈值的分钟才变成告警 dict；青框 `alert_on_spikes` 就是中间那三步组装；`format_report` 把 dict 渲染成文本、`schedule_job` 让整条 pipeline 定时跑——本章画到这里为止，真 webhook 是 Ch27。
 
 每个环节都是一个**小函数**(可单独测),串起来就是完整 pipeline。这是运维脚本的典型架构:**每个函数只做一件事,靠组合取胜**。
 
@@ -342,12 +366,7 @@ build_alert_message("2026-07-24T10:00", 6, 3)
 
 ### 组装思路(调用关系)
 
-```
-alert_on_spikes(lines, threshold)
-  ├─ count_5xx_per_minute(lines)          # §26.3 聚合出 {分钟: 错误数}
-  ├─ find_spike_minutes(counts, threshold) # §26.4 找超阈值的分钟
-  └─ [build_alert_message(m, ...) ...]     # §26.5 给每个超标分钟生成告警
-```
+对照 §26.1 的图：青框 `alert_on_spikes` 吃进 `lines` + `threshold`，先 `count_5xx_per_minute` 得到 `{分钟: 错误数}`，再 `find_spike_minutes` 取出超阈值分钟，最后给每个分钟调 `build_alert_message` 吐出告警 dict 列表。
 
 ### 实现(列表推导串起三个函数)
 

@@ -136,7 +136,7 @@ cd web && bun run build:content
 | **2** | M3 FastAPI 架构章 | 10 张新图（Ch14:1 Ch16:2 Ch17:2 Ch18:2 Ch19:2 Ch21:1；§21.6 时序沿用 Batch 0） | ✅ 两波 4+2 agent |
 | **3** | M5 AI 管道 | 10 张（Ch28:2 Ch29:1 Ch30:2 Ch31:1 Ch32:2 Ch33:2） | ✅ 两波 4+2 agent |
 | **4** | M1 语言核心概念 | 7 张（Ch03:2 Ch04:2 Ch05:1 Ch06:2） | ✅ 一轮 4 agent |
-| **5** | M2 + M4 扫尾 | 6–8 张 | ☐ |
+| **5** | M2 + M4 扫尾 | 5 张（Ch09:1 Ch12:1 Ch23:1 Ch26:1 Ch27:1） | ✅ 两波 2+3 agent |
 
 ### Batch 1 · M6（最缺图）
 
@@ -188,11 +188,11 @@ cd web && bun run build:content
 
 | 章 | 建议图 | 状态 |
 |---|---|---|
-| Ch09 | `lru_cache` 命中/未命中 | ☐ |
-| Ch12 | Logger → Handler → Formatter | ☐ |
-| Ch23 | 归档：扫描 → 分组 → 搬迁 | ☐ |
-| Ch26 | 日志 → 聚合 → 阈值 → webhook | ☐ |
-| Ch27 | 巡检：配置 → 检查 → 报告 → 告警 | ☐ |
+| Ch09 | `lru_cache` 命中/未命中 | ✅ 1 张 |
+| Ch12 | Logger → Handler → Formatter | ✅ 1 张 |
+| Ch23 | 归档：扫描 → 分组 → 搬迁 | ✅ 1 张 |
+| Ch26 | 日志 → 聚合 → 阈值 → webhook | ✅ 1 张（画到报告/定时；webhook 在 Ch27） |
+| Ch27 | 巡检：配置 → 检查 → 报告 → 告警 | ✅ 1 张 |
 | 其余 M2/M4 | 默认不加 | — |
 
 ---

@@ -64,18 +64,57 @@
 
 生产巡检脚本的标准结构,每个环节都是一个**小函数**(可单独测、可 monkeypatch):
 
+```mermaid
+flowchart TD
+    RunInsp["run_inspection"] --> LoadTh["load_thresholds · 配置分层"]
+
+    subgraph Checks["检查"]
+        direction LR
+        CkDisk["check_disk"]
+        CkMem["check_memory"]
+        CkCpu["check_cpu"]
+        CkPort["check_port"]
+    end
+
+    LoadTh --> CkDisk
+    LoadTh --> CkMem
+    LoadTh --> CkCpu
+    LoadTh --> CkPort
+
+    CkDisk --> BuildRpt["build_health_report"]
+    CkMem --> BuildRpt
+    CkCpu --> BuildRpt
+    CkPort --> BuildRpt
+
+    subgraph AlertStage["告警"]
+        HealthyQ{"整体健康?"}
+        HasUrlQ{"有 url?"}
+        SkipHook["不推 webhook"]
+        SendHook["send_webhook · POST"]
+        HealthyQ -.->|"是 · 不推"| SkipHook
+        HealthyQ -->|"否"| HasUrlQ
+        HasUrlQ -.->|"否 · 不推"| SkipHook
+        HasUrlQ -->|"是 · POST"| SendHook
+    end
+
+    BuildRpt --> HealthyQ
+
+    style RunInsp fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style LoadTh fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style Checks fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style CkDisk fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style CkMem fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style CkCpu fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style CkPort fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style BuildRpt fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style AlertStage fill:#FFEBEE,stroke:#C62828,color:#1f1f1f
+    style HealthyQ fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style HasUrlQ fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style SkipHook fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style SendHook fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
 ```
-配置 load_thresholds          ← 阈值:默认 < 环境变量
-   │
-   ├─ check_disk / check_memory / check_cpu   ← psutil 采水位,挂阈值
-   ├─ check_port                                ← socket 探活关键端口
-   │
-build_health_report            ← all() 汇总成「整体健康」
-   │
-   └─ 不健康 → send_webhook     ← urllib POST 到飞书/钉钉
-        ▲
-run_inspection                 ← 把以上全部串起来(综合题)
-```
+
+**这张图要你看懂：** `run_inspection` 按「配置 → 检查 → 报告 → 告警」串完全流程；`load_thresholds` 之后并行做水位三检和端口探活，`build_health_report` 汇总后，整体健康则不推 webhook，只有不健康且配了 url 才 POST。
 
 贯穿全局的两条原则:
 - **配置外置**:阈值、webhook URL 绝不写死,走环境变量——改配置不用改代码、不用重新部署。
@@ -522,19 +561,7 @@ send_webhook("https://example.invalid/hook", report)
 
 ## §27.7 综合:run_inspection 组装巡检(对应:`run_inspection`)🔴
 
-最后一题**不写新知识**,把前 7 个函数像积木一样拼成完整巡检:「读配置 → 三检 → 汇总 → 异常推 webhook」。
-
-### 调用关系
-
-```
-run_inspection(env, webhook_url, disk_path)
-  ├─ load_thresholds(env)                         # §27.2 阈值:默认 < env
-  ├─ check_disk(disk_path, thresholds["disk"])     # §27.3
-  ├─ check_memory(thresholds["memory"])            # §27.3
-  ├─ check_cpu(thresholds["cpu"])                  # §27.3
-  ├─ build_health_report({"disk":…, "memory":…, "cpu":…})   # §27.5
-  └─ 不健康 且 有 webhook_url → send_webhook(url, report)   # §27.6
-```
+最后一题**不写新知识**,把前 7 个函数像积木一样拼成完整巡检:「读配置 → 三检 → 汇总 → 异常推 webhook」。调用关系见 §27.1 流程图。
 
 ### 实现
 

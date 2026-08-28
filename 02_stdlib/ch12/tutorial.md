@@ -207,6 +207,25 @@ add_console_handler(logger)                      # 启动流程里被再调一�
 len(logger.handlers)                             # 1 —— 幂等,日志不会打两遍
 ```
 
+```mermaid
+flowchart TD
+    Evt["日志事件"] --> Lgr["Logger · 记事件 · 按 Level 过滤"]
+    Lgr -->|"addHandler"| H1["Handler · 输出到控制台或文件"]
+    H1 --> Fmt["Formatter · 决定长什么样"]
+    Fmt --> Out["输出一遍"]
+    Lgr -.->|"再 addHandler"| H2["又一份 Handler"]
+    H2 -.->|"打两遍"| Out
+
+    style Evt fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style Lgr fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style H1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style Fmt fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style Out fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style H2 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：** Logger 只负责记事件并按 Level 过滤；Handler 决定打到控制台还是文件；Formatter 决定长什么样。`addHandler` 是追加不是替换，挂两次就会沿红虚线把同一条日志打两遍。
+
 > ✅ 做 `add_console_handler` 题:遍历 `logger.handlers` 查重 → 没有才 `StreamHandler()` + `setFormatter(Formatter(fmt))` + `addHandler` → 返回 logger(支持链式)。默认格式用作业里给好的 `DEFAULT_FMT`。
 
 ---

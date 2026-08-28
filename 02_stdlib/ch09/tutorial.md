@@ -461,6 +461,24 @@ lru_cache 只适合**纯函数**(相同输入永远相同输出、无副作用):
 - ❌ **参数不可哈希**:`query_product(["KB-001"])` 传 list 会 TypeError——缓存拿入参当 dict 键,必须可哈希(int/str/tuple 行,list/dict/set 不行)
 - ⚠️ 注意:异常**不**被缓存(查不到 sku 抛 KeyError,下次再查还是会真查再抛)
 
+```mermaid
+flowchart TD
+    CallNode["调用 query_product(sku)"] --> CheckNode{"缓存有这份入参?"}
+    CheckNode -->|"否 · miss"| ComputeNode["真算并写入缓存"]
+    ComputeNode --> MissOut["返回结果"]
+    CheckNode -->|"是 · hit"| HitOut["直接返回 · 不重算"]
+    ComputeNode -.->|"重叠子问题被缓存"| FibHint["递归 fib · O(2ⁿ) 变 O(n)"]
+
+    style CallNode fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style CheckNode fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style ComputeNode fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style MissOut fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style HitOut fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style FibHint fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：同一入参第一次走黄路 miss（真算并写入），第二次走绿路 hit（直接返回、不重算）；`cache_info()` 的 hits/misses 就是这两条路的计数。递归 fib 从 O(2ⁿ) 降到 O(n)，是重叠子问题被缓存、每个 n 只算一次。**
+
 > 🤯 **Java 对比**:手写 `Map` + `computeIfAbsent`,或 Guava `CacheBuilder`,或 Spring `@Cacheable`。Python 把「记忆化」下沉成一个装饰器(Ch04 装饰器语法的最佳实战)。
 
 > ✅ 做 `query_product` 题:**① 在 def 上一行加 `@lru_cache(maxsize=None)`**;② 函数体照常写遍历查找,找不到 `raise KeyError(sku)`。测试会调 `cache_clear()` 后数 hits/misses,**不加装饰器过不了缓存测试**。

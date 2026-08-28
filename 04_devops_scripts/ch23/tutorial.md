@@ -464,18 +464,6 @@ for p in sorted(log_dir.glob("*.log")):      # 只处理顶层 .log
 
 最后一题**不写新知识**,把前 6 个函数像积木一样拼成真实工具:「扫描日志目录,把 ≥ 阈值的文件搬进归档目录,输出一份报告」。
 
-### 组装思路(调用关系)
-
-```
-archive_large_logs(log_dir, archive_dir, threshold)
-  ├─ ensure_dir(archive_dir)          # §23.4 先建归档目录(§23.5 的陷阱还记得吗)
-  ├─ file_size_report(log_dir)        # §23.2 拿 {文件名: 大小}
-  │    └─ 筛出 size >= threshold 的名字,拼回完整 Path(log_dir / name)
-  ├─ archive_files(待归档列表, archive_dir)  # §23.5 搬走
-  ├─ group_by_extension(log_dir)      # §23.3 归档后,盘点【剩余】文件
-  └─ total_size(archive_dir)          # §23.4 算归档目录总大小 = 腾出多少空间
-```
-
 ### 报告契约(测试按这个断言)
 
 返回 dict,四个 key:
@@ -490,6 +478,45 @@ archive_large_logs(log_dir, archive_dir, threshold)
 > 🔴 **顺序有讲究**:必须先 `file_size_report`(归档前盘点)→ 再 `archive_files`(搬走)→ 最后 `group_by_extension(log_dir)`(归档**后**的剩余)。顺序反了,报告就对不上。
 >
 > 💡 注意阈值语义是 **`>=`**(「达到阈值就归档」),不是 `>`。
+
+### 组装思路(调用关系)
+
+```mermaid
+flowchart TD
+    start["archive_large_logs(log_dir, archive_dir, threshold)"]
+    start --> prep["ensure_dir(archive_dir) · 先建目录"]
+
+    subgraph scanBox["归档前扫描"]
+        scan["file_size_report(log_dir)"]
+        pick["筛出 size >= threshold 的名字"]
+        scan --> pick
+    end
+
+    prep --> scan
+    pick --> moveN["archive_files(待归档列表, archive_dir)"]
+
+    subgraph restBox["归档后盘点"]
+        left["group_by_extension(log_dir) · 剩余"]
+        tot["total_size(archive_dir)"]
+        left --> tot
+    end
+
+    moveN --> left
+    tot --> rpt["返回 scanned · archived · remaining_by_ext · freed_bytes"]
+
+    style start fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style prep fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style scan fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style pick fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style moveN fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style left fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style tot fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style rpt fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style scanBox fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style restBox fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：先 `file_size_report` 盘点源目录并筛 `>=` 阈值，再 `archive_files` 搬走，最后才 `group_by_extension` 盘点剩余——顺序反了，报告对不上。**
 
 这道题考察的不是新语法,而是**组合能力**——每个零件你都写过了,现在要按正确顺序调用、把前一个的输出当后一个的输入。这就是「小函数 + 组合」的 Pythonic 风格(Java 老手熟悉,但 Python 写起来更短)。
 
