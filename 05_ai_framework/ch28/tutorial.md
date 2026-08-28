@@ -192,6 +192,31 @@ print(desc)   # "指尖机械狂想，敲击即享受！"
 
 **为什么要复用 `extract_text`？** 解析逻辑和调用逻辑分离——**小函数组合**，不要把解析塞进调用里。这样换 SDK（anthropic → openai）只改 `extract_text`。
 
+```mermaid
+flowchart TD
+    subgraph CALL["一次 call_llm"]
+        IN["user 文本"] --> BUILD["build_user_message"]
+        BUILD --> MSG["消息 dict role 与 content"]
+        SYS["system、model max_tokens"] --> CREATE
+        MSG --> CREATE["client.messages.create(...)"]
+        CREATE --> RESP["响应对象 content 是块列表"]
+        RESP --> EXT["extract_text"]
+        EXT --> OUT["纯文本"]
+    end
+
+    style CALL fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style IN fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style BUILD fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style MSG fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style SYS fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style CREATE fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style RESP fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style EXT fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style OUT fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**一次 `call_llm` 是三条小函数串起来：`build_user_message` 造消息 dict，`client.messages.create(...)` 换回结构化响应，`extract_text` 再从 `content` 块列表抽出纯文本。
+
 > ✅ 做 `call_llm`：`client.messages.create(model/system/max_tokens/messages=[build_user_message(user)])` → `extract_text(response)`。
 
 ---
@@ -292,6 +317,36 @@ def build_messages_bad(history, user):
 ```
 
 ✅ **正确写法**：`return [*history, {"role": "user", "content": user}]`——返回新列表，原 history 不动。这对应 Java 里别直接改别人传进来的 List。
+
+```mermaid
+flowchart TD
+    subgraph R1["第 1 轮 发出 2 条"]
+        U1["user 给机械键盘写文案"] --> A1["assistant 指尖机械狂想"]
+    end
+
+    COPY["build_messages 新建列表"]
+
+    subgraph R2["第 2 轮 发出 3 条"]
+        U2["user 给机械键盘写文案"] --> A2["assistant 指尖机械狂想"]
+        A2 --> U3["user 再活泼一点"]
+    end
+
+    A1 --> COPY
+    COPY -->|"完整 history + 新 user"| U2
+    COPY -.->|"不 mutate 入参"| KEEP["history 仍是 2 条"]
+
+    style R1 fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style R2 fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style U1 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style A1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style COPY fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style U2 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style A2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style U3 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style KEEP fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**LLM 无状态，第 2 轮不能只发新 user；要把第 1 轮那 2 条完整叠上新消息变成 3 条一起发出。`build_messages` 新建列表，入参 history 仍是 2 条。
 
 > ✅ 做 `build_messages`：`return [*history, build_user_message(user)]`。
 

@@ -230,16 +230,53 @@ async def maintenance_guard(request: Request, call_next):
 
 ### 注册顺序:后注册 = 外层 = 先执行
 
-本章注册顺序是 CORS → `log_requests` → `maintenance_guard`,运行时请求路径:
-
-```text
-请求 → ServerErrorMiddleware → maintenance_guard → log_requests → CORS → 路由
-                                    ↑ 最后注册,洋葱最外层,最先执行
-```
+本章注册顺序是 CORS → `log_requests` → `maintenance_guard`。后注册的 `maintenance_guard` 落在洋葱最外层,请求进来时最先执行。
 
 所以维护短路时,`log_requests` **根本轮不到跑**——测试断言了「`REQUEST_LOG` 为空、响应无 `X-Process-Time-ms`」,这就是「外层短路,内层全跳过」的证据。
 
 > 🟡 **Java 对比**:和 Spring `FilterRegistrationBean.setOrder(...)` / Security 过滤器链同理——**越外层越先拦**。鉴权、维护开关这类「一刀切」逻辑要放外层。
+
+```mermaid
+flowchart TB
+    subgraph IN["请求进入 外层先跑"]
+        direction LR
+        nReq["请求"] --> nSem["ServerError Middleware"]
+        nSem --> nMg["maintenance_guard 最后注册 = 最外层"]
+        nMg --> nLog["log_requests call_next 前计时"]
+        nLog --> nCors["CORS"]
+    end
+
+    nMg -.->|"维护短路 不调 call_next"| nSkip["503 JSON 内层含 log_requests 全跳过"]
+
+    nCors --> nRt["路由 + 异常 handler"]
+
+    subgraph OUT["响应出来 内层先加工"]
+        direction LR
+        nCors2["CORS"] --> nLog2["log_requests call_next 后加耗时头"]
+        nLog2 --> nMg2["maintenance_guard"]
+        nMg2 --> nSem2["ServerError Middleware"]
+        nSem2 --> nRes["响应给客户端"]
+    end
+
+    nRt --> nCors2
+
+    style IN fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style OUT fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style nReq fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style nSem fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style nMg fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style nLog fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style nCors fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style nSkip fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style nRt fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style nCors2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style nLog2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style nMg2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style nSem2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style nRes fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**请求从上往下层层进入、响应从下往上层层出来;`maintenance_guard` 最后注册所以在最外层、最先执行。维护一短路就不调 `call_next`,内层的 `log_requests`(计时、访问日志)根本不会跑。
 
 ❌ **错误写法**(想短路却调了 `call_next`):
 
@@ -308,6 +345,40 @@ POST /products {"id": 1, ...}      -> 409 {"error": "Conflict", "message": "商�
 **好处**:业务代码只管 `raise`(干净),错误格式集中在一处(改格式只改处理器);异常实例**携带字段**(`resource`/`id`/`username`),处理器拼消息时直接用,比到处格式化字符串靠谱。
 
 > 🟡 **和 Ch16 的 HTTPException 什么关系?** `HTTPException(404, detail=...)` 适合「抛一次就完」的简单场景;当**同一类异常在多处抛、要统一格式、要携带结构化字段**时,就毕业到自定义异常体系。Ch16 的鉴权 401 用 HTTPException 很合适;本章商城的三类业务错误需要统一格式,所以自定义。
+
+```mermaid
+flowchart TB
+    EP["端点 raise"] --> D{"哪类异常?"}
+
+    D -->|"NotFound"| H1["handle_not_found"]
+    D -->|"PermissionDenied"| H2["handle_permission_denied"]
+    D -->|"Conflict"| H3["handle_conflict"]
+    D -->|"未捕获异常"| H4["handle_unexpected"]
+
+    H1 --> J1["404 JSON error NotFound"]
+    H2 --> J2["403 JSON error PermissionDenied"]
+    H3 --> J3["409 JSON error Conflict"]
+    H4 --> J4["500 JSON · error InternalServerError · 堆栈只进日志"]
+
+    J1 --> LOG["穿过 log_requests 向外 耗时头还在"]
+    J2 --> LOG
+    J3 --> LOG
+    J4 --> LOG
+
+    style EP fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style D fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style H1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style H2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style H3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style H4 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style J1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style J2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style J3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style J4 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style LOG fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：**端点只管 `raise`,四种异常各进各的 handler,出口都是 `{"error","message"}`。handler 在中间件内层,所以 404 出来仍会穿过 `log_requests`,耗时头还在。
 
 ❌ **错误写法 1**(每个端点手写 JSONResponse):
 

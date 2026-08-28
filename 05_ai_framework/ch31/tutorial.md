@@ -68,13 +68,39 @@ LLM 的知识有**截止日期**,且没见过你的私有数据。让它用你�
 
 RAG 管道(开卷考试),**本章作业就是按这个顺序逐站实现**:
 
+```mermaid
+flowchart TD
+    subgraph OFF["离线建索引 只做一次"]
+        direction LR
+        docs["文档"] --> chk["① 切片 chunk"]
+        chk --> emb["② 向量化 embedding"]
+        emb --> store["向量库"]
+    end
+
+    subgraph ONL["在线查询 每次提问"]
+        direction LR
+        qry["用户提问"] --> qemb["③ query 向量化"]
+        qemb --> topk["③ 检索 top-k"]
+        topk --> ctx["④ 拼上下文 塞进 prompt"]
+        ctx --> llm["⑤ LLM 回答 并标注来源"]
+    end
+
+    store -.->|"生产复用索引"| topk
+
+    style OFF fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style ONL fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style docs fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style chk fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style emb fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style store fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style qry fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style qemb fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style topk fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style ctx fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style llm fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
 ```
-用户提问 query
-  → ① 离线:文档切片(chunk)→ ② 每片向量化(embedding)→ 存入向量库
-  → ③ 在线:query 也向量化 → 在库里找最相似的 top-k 片(retrieve)
-  → ④ 把这些片拼成「上下文」塞进 prompt(build context/prompt)
-  → ⑤ LLM 基于上下文回答(并标注来源)
-```
+
+**这张图要你看懂：**上半离线把文档切成片、向量化后入库（生产只建一次）；下半在线把提问向量化、取 top-k 拼进 prompt，让 LLM 开卷作答并标来源——教学版为看全管道，每次查询都会重建索引。
 
 > 🟡 **Java 对比**:像 Elasticsearch 的语义版——但 ES 按关键词/词频(BM25)匹配,RAG 按**语义向量**找。「电池耐用吗」匹配「5000mAh 大电池」,LIKE 做不到,向量做得到。
 

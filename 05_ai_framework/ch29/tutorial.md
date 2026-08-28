@@ -80,13 +80,35 @@ LLM 的输出质量**强依赖你怎么问**。同一个模型,两种问法:
 
 本章 7 个函数,就是这条「**组装 → 调用 → 解析**」管道上最常用的 7 个零件:
 
-```text
-fill_template ──→ build_few_shot_prompt ──→ build_analysis_prompt
-(填模板)          (拼示例)                   (指令+示例=完整Prompt)
-                                                      ↓
-analyze_review ←── parse_structured ←── parse_json_lenient ←── fake_llm(模拟调用)
-(管道总装)         (强类型校验)            (容错抠JSON)
+```mermaid
+flowchart TD
+    subgraph assemble["组装"]
+        direction LR
+        A["fill_template 填模板"] --> B["build_few_shot_prompt 拼示例"]
+        B --> C["build_analysis_prompt 指令+示例"]
+    end
+    D["fake_llm 模拟调用"]
+    subgraph parse["解析"]
+        direction LR
+        E["parse_json_lenient 容错抠 JSON"] --> F["parse_structured 强类型校验"]
+    end
+    G["analyze_review 管道总装"]
+    C --> D
+    D --> E
+    F --> G
+
+    style assemble fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style parse fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style A fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style B fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style C fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style D fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style E fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style F fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style G fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
 ```
+
+**这张图要你看懂：上半组装 Prompt（填模板 → 拼示例 → 指令+示例），中间 `fake_llm` 模拟调用，下半容错抠 JSON 再 Pydantic 强类型校验；`analyze_review` 把这三段收成一条管道。**
 
 ---
 

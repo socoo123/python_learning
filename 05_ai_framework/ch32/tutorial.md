@@ -51,16 +51,30 @@
 
 这是个**循环**，不是单次调用。模型在循环里扮演「决策者」，你的代码扮演「执行器」：
 
+```mermaid
+flowchart TD
+    qin["query + 历史观察"] --> dec["Decider (LLM)"]
+    dec --> kind{"tool 还是 answer?"}
+    kind -->|"answer"| done["终止 返回答案"]
+    kind -->|"tool"| exec[执行工具]
+    exec --> obs["观察写入 observations"]
+    obs --> cap{"未超 max_iters?"}
+    cap -->|"是"| cyc["下一轮带着 query + 观察"]
+    cyc -.->|"再进决策"| dec
+    cap -->|"否"| fail["兜底 未能得出答案"]
+
+    style qin fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style dec fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style kind fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style done fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style exec fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style obs fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style cap fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style cyc fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style fail fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
 ```
-        ┌─────────────────────────────────┐
-        ↓                                 │
-   ┌─────────┐   决策(tool/answer)   ┌────┴──────┐
-   │ Decider │ ────────────────────→ │ 执行/终止  │
-   │ (LLM)   │ ←──────────────────── │           │
-   └─────────┘    observations       └───────────┘
-        ↑                                  │
-        └──── query + 历史观察 ────────────┘
-```
+
+**这张图要你看懂：**LLM 每轮只输出一种决策——tool 就执行、把观察喂回，带着 query 和历史再进 Decider；answer 就终止（绿）。紫节点是「记忆」；红节点是转数用尽的硬停，防止模型反复调工具。
 
 > 🟡 **Java 对比**：Java 的方法调用是**编译期/代码里写死**的（`service.query()`），Agent 的工具调用是**运行时由 LLM 决定**的。最接近的类比是**规则引擎**（Drools）或**状态机**，但 Agent 的「转移函数」是一个神经网络，不是硬编码规则。这就是为什么 Agent 是新范式——**决策权从代码转移到了模型**。
 
@@ -418,6 +432,24 @@ response = client.messages.create(
 ```
 
 把原生 tool use 接到作业同一套「决策 → 调工具 → 观察」循环上，**不能**把观察拍成普通 user 文本（`观察:{obs}`）。Anthropic 要求：assistant 这一轮必须原样带回 `tool_use`（含 `id`），下一轮 user 必须回带 `tool_use_id` 的 `tool_result`，否则真 API 会拒收。
+
+```mermaid
+sequenceDiagram
+    participant Cli as 客户端
+    participant Api as LLM API
+    participant Tool as 工具
+
+    Cli->>Api: 把 tools schema 交给 API
+    Api-->>Cli: 结构化 tool_use 含 id
+    Note right of Cli: 不用 parse 文本
+    Cli->>Tool: 按 name 与 input 执行
+    Tool-->>Cli: 观察结果
+    Cli->>Api: 下一轮原样带回 tool_use 与 tool_result
+    Note over Cli,Api: id 必须对上 否则拒收
+    Api-->>Cli: 最终文本 终止
+```
+
+**这张图要你看懂：**客户端把 tools schema 交给 API 后，模型直接返回结构化 `tool_use`（不用 parse 文本）；执行完工具，下一轮必须把同一个 `tool_use` 和带 id 的 `tool_result` 原样带回，对不上 API 会拒收。
 
 ```python
 def run_native_tool_loop(query: str, registry: dict, max_iters: int = 5) -> str:

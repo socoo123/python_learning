@@ -68,14 +68,29 @@
 
 它和分治(如归并排序)的区别:分治的子问题**互不重叠**,DP 的子问题**大量重叠**。看斐波那契的裸递归树(`f(5)`):
 
+```mermaid
+graph TD
+    f5["f(5)"] --> f4["f(4)"]
+    f5 --> f3r["f(3)"]
+    f4 --> f3l["f(3)"]
+    f4 --> f2m["f(2)"]
+    f3l --> f2l["f(2)"]
+    f3l --> f1l["f(1)"]
+    f3r --> f2r["f(2)"]
+    f3r --> f1r["f(1)"]
+
+    style f5 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style f4 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style f3l fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style f3r fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style f2m fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style f2l fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style f2r fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style f1l fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style f1r fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
 ```
-                 f(5)
-              /        \
-          f(4)          f(3)        ← f(3) 第 1 次
-         /    \        /    \
-      f(3)    f(2)  f(2)   f(1)
-       ↑ 第 2 次     ↑ f(2) 已经出现 3 次……
-```
+
+**这张图要你看懂：** 紫色的 `f(3)` / `f(2)` 各出现多次——同一子问题被重复计算；绿的 `f(1)` 是边界，黄的 `f(5)` 是起点。缓存后每个只算一次，O(2ⁿ) 砍成 O(n)。
 
 `f(5)` 要算 `f(4)+f(3)`,`f(4)` 又算 `f(3)+f(2)`——`f(3)` 被重复计算,越往下重复越多,总调用次数 O(2ⁿ)。**子问题大量重叠 = DP 的信号**;把每个 `f(k)` 的答桉缓存起来,重复节点直接查表,就砍成 O(n)。
 
@@ -372,6 +387,23 @@ def rob(nums: list[int]) -> int:
 ```
 
 > 🔴 **Python 特有**:`prev2, prev1 = prev1, max(...)` 一行完成「先算新值、再整体平移」——元组解包先算右边再同时赋值,Java 必须引入临时变量 `cur` 三步走。DP 滚动数组在 Python 里全是这个味道。
+
+```mermaid
+flowchart TD
+    start["第 i 间"] --> decide{"偷还是不偷?"}
+    decide -->|"不偷"| skip["dp[i-1]"]
+    decide -->|"偷"| take["dp[i-2] + nums[i-1]"]
+    skip --> ans["dp[i] = max 两路"]
+    take --> ans
+
+    style start fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style decide fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style skip fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style take fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style ans fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 每间房只有两路——不偷继承 `dp[i-1]`，偷则跳过邻居接 `dp[i-2]+x`；答案是两路的 max，不是每次都偷。
 
 ### 手推验证(已验证)
 
@@ -676,6 +708,21 @@ def unique_paths(m: int, n: int) -> int:
 
 > 初始化技巧:边界「第一行 / 列全 1」正好就是整张表的初始值,`[[1]*n for _ in range(m)]` 一步建好,循环从 `(1,1)` 开始填——比 Java 少写两个边界 for。
 
+```mermaid
+flowchart TD
+    a00["(0,0) = 1"] -->|"向右"| a01["(0,1) = 1"]
+    a00 -->|"向下"| a10["(1,0) = 1"]
+    a01 -->|"下来"| a11["(1,1) = 上 + 左"]
+    a10 -->|"过来"| a11
+
+    style a00 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style a01 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style a10 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style a11 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 第一行、第一列只能直走，所以全是 1；内格 `(1,1)` 的方案数 = 上方下来的 + 左方过来的。
+
 ### 手推验证(已验证)
 
 3×3 的 dp 表:
@@ -776,6 +823,20 @@ def longest_common_subsequence(text1: str, text2: str) -> int:
                 dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
     return dp[len1][len2]
 ```
+
+```mermaid
+flowchart TD
+    cell["dp[i][j]"] --> eq{"末字符相等?"}
+    eq -->|"是"| diag["对角 dp[i-1][j-1] + 1"]
+    eq -->|"否"| mx["max(上, 左)"]
+
+    style cell fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style eq fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style diag fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style mx fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：** 末字符相等就走左上对角 +1（配对收进 LCS）；不等则至少舍掉其中一个，取上方、左方的较大值。
 
 ### 手推验证(已验证)
 

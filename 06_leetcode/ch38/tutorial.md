@@ -110,20 +110,37 @@ while queue:
 
 ### 读题必备:LeetCode 层序数组 ↔ 树
 
-题面和测试都用**层序数组**描述一棵树:按层从左到右排,`None` 占位表示「该位置没有节点」:
+题面和测试都用**层序数组**描述一棵树:按层从左到右排,`None` 占位表示「该位置没有节点」。例:`[3, 9, 20, None, None, 15, 7]`
 
+```mermaid
+flowchart TD
+    n3["3"]
+    n9["9"]
+    n20["20"]
+    noneL["None"]
+    noneR["None"]
+    n15["15"]
+    n7["7"]
+
+    n3 --> n9
+    n3 --> n20
+    n9 -.-> noneL
+    n9 -.-> noneR
+    n20 --> n15
+    n20 --> n7
+
+    style n3 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style n9 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style n20 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style noneL fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style noneR fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style n15 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style n7 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
 ```
-[3, 9, 20, None, None, 15, 7]      读作:
 
-        3                ← values[0] 是根
-       / \
-      9   20             ← values[1..2] 是 3 的左、右孩子
-          / \
-        15   7           ← 9 认领 values[3..4] = None,None(无孩子)
-                         ← 20 认领 values[5..6] = 15,7
-```
+**这张图要你看懂：**数组按层消耗——根 3 认领 9 和 20；9 认领两个 None（红虚线，无孩子）；20 认领 15 和 7。
 
-读法口诀:**数组按「层」被消耗**——从根开始,每个已建节点依次认领数组里下两个值当左右孩子,`None` 表示没有。测试文件里给了 `build_tree(values)` helper 把数组变成真树,你读测试时照着上面画一遍就懂了。
+读法口诀:**数组按「层」被消耗**——从根开始,每个已建节点依次认领数组里下两个值当左右孩子,`None` 表示没有。测试文件里给了 `build_tree(values)` helper 把数组变成真树,你读测试时对照上图走一遍就懂了。
 
 > 💡 自己构造边界用例(单节点、斜链)时,直接嵌套写更直观:`TreeNode(1, TreeNode(2), TreeNode(3))`,签名是 `TreeNode(val, left, right)`。
 
@@ -180,6 +197,34 @@ def max_depth(root):
 > 3. 退化链(全左/全右)深度 = n,LeetCode 大数据注意递归上限(§38.9 第 5 条)。
 
 **复杂度**:时间 O(n)(每节点访问一次);空间 O(h)(递归栈,h = 树高;平衡 h=log n,退化链 h=n)。
+
+```mermaid
+flowchart TD
+    n3["3 1+max(1,2)=3"]
+    n9["9 1+max(0,0)=1"]
+    n20["20 1+max(1,1)=2"]
+    n15["15 1+max(0,0)=1"]
+    n7["7 1+max(0,0)=1"]
+    noneL["None = 0"]
+    noneR["None = 0"]
+
+    n3 --> n9
+    n3 --> n20
+    n9 --> noneL
+    n9 --> noneR
+    n20 --> n15
+    n20 --> n7
+
+    style n3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style n9 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style n20 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style n15 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style n7 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style noneL fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style noneR fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：**空节点返回 0；每个真实节点返回 `1 + max(左, 右)`。叶子 9 是 `1+max(0,0)=1`，根 3 是 `1+max(1,2)=3`。
 
 > ✅ **做 `max_depth`**:`if root is None: return 0` → `1 + max(左, 右)`。
 
@@ -349,17 +394,7 @@ def bad(node):
     return bad(node.left) and bad(node.right)
 ```
 
-这种写法**漏判孙子辈**。反例:
-
-```
-        5
-       / \
-      4   6       6 > 5 ✅, 4 < 5 ✅ —— 每个节点「直接孩子」都合法
-         / \
-        3   7     但 3 在 5 的【右子树】里,3 < 5,违反 BST!
-```
-
-6 自己合法,但 6 的左孩子 3「跨过」了根 5 的下界——`bad` 检测不到。
+这种写法**漏判孙子辈**。反例树 `5 / 4 / 6 / 3 / 7`:4 < 5、6 > 5,每个节点「直接孩子」都合法;但 3 在 5 的**右子树**里且 3 < 5,违反 BST。6 自己合法,它的左孩子 3「跨过」了根 5 的下界——`bad` 检测不到(结构见本节图)。
 
 ### ✅ 正确写法:DFS 带上下界 (low, high)
 
@@ -404,6 +439,28 @@ def is_valid_bst(root):
 > 3. 区间写成闭区间 `low <= val <= high` → 等值树 `[1,1]` 会误判 True。
 
 **复杂度**:时间 O(n);空间 O(h)。
+
+```mermaid
+flowchart TD
+    n5["5 (-∞, +∞)"]
+    n4["4 (-∞, 5)"]
+    n6["6 (5, +∞)"]
+    n3["3 撞上 low=5 (5, 6)"]
+    n7["7 (6, +∞)"]
+
+    n5 --> n4
+    n5 --> n6
+    n6 --> n3
+    n6 --> n7
+
+    style n5 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style n4 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style n6 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style n3 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style n7 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**走右子树时下界收成父值 5；3 虽小于父 6，但 `3 > 5` 不成立，撞上祖辈留下的 `low=5`。
 
 > ✅ **做 `is_valid_bst`**:闭包 `validate(node, low, high)`——空 → True;`low < val < high` 否则 False;左走 `(low, val)`、右走 `(val, high)`;初始 `(-∞, +∞)`。
 
@@ -596,17 +653,7 @@ def right_side_view_dfs(root):
 
 **题面**:找 p、q 在树中**离它们最近**的共同祖先节点。定义:节点 x 是 p、q 的公共祖先,当且仅当 p、q 都在「以 x 为根的子树」里;「最近」= 最深的那个 x。**一个节点可以是自己的祖先**(比如 p 是 q 的祖先时,LCA 就是 p)。题目保证 p、q 都在树中且互不相同。
 
-**例**(树 `[3,5,1,6,2,0,8,None,None,7,4]`):
-
-```
-        3
-       / \
-      5   1
-     / \ / \
-    6  2 0  8
-      / \
-     7   4
-```
+**例**(树 `[3,5,1,6,2,0,8,None,None,7,4]`,结构见本节图):
 
 - p=5, q=1 → LCA=3(分居根的两侧)
 - p=5, q=4 → LCA=5(4 在 5 的子树里,5 是自己的祖先)
@@ -669,6 +716,40 @@ def lowest_common_ancestor(root, p, q):
 > 3. 左右都找到时不敢返回当前节点(怀疑「会不会有更深的」)——不会,再往下只能找到一个目标,这里就是最近的分叉。
 
 **复杂度**:时间 O(n);空间 O(h)。
+
+```mermaid
+flowchart TD
+    n3["3 两侧非空 → 自己"]
+    n5["5 只一边非空 → 这边"]
+    n1["1"]
+    n6["6"]
+    n2["2"]
+    n0["0"]
+    n8["8"]
+    n7["7"]
+    n4["4"]
+
+    n3 --> n5
+    n3 --> n1
+    n5 --> n6
+    n5 --> n2
+    n1 --> n0
+    n1 --> n8
+    n2 --> n7
+    n2 --> n4
+
+    style n3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style n5 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style n1 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style n4 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style n6 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style n2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style n0 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style n8 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style n7 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：**p=5、q=1 分居 3 的两侧 → 左右都非空，返回当前节点 3；p=5、q=4 都在左边 → 只左非空，返回非空那边的 5。
 
 > ✅ **做 `lowest_common_ancestor`**:`if root is None or root is p or root is q: return root` → 递归左右 → 左右都非空返回 root → 否则返回非空那边。
 

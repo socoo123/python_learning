@@ -144,6 +144,45 @@ def two_sum_sorted(nums, target):
 
 > ⚠️ **前提是有序**!无序数组用对撞会漏解——必须先 `sort()`。LC1 两数之和要返回**原下标**,排序后下标乱了,所以只能用 HashMap(Ch36 讲)。
 
+```mermaid
+flowchart TB
+    subgraph step1["步1 和=7 太大"]
+        direction LR
+        a0["1 lo"] --- a1["2"] --- a2["3"] --- a3["4"] --- a4["6 hi"]
+    end
+    subgraph step2["步2 和=5 太小"]
+        direction LR
+        b0["1 lo"] --- b1["2"] --- b2["3"] --- b3["4 hi"] --- b4["6"]
+    end
+    subgraph step3["步3 和=6 命中"]
+        direction LR
+        c0["1"] --- c1["2 lo"] --- c2["3"] --- c3["4 hi"] --- c4["6"]
+    end
+    step1 -->|"hi 左移"| step2
+    step2 -->|"lo 右移"| step3
+
+    style step1 fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style step2 fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style step3 fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style a0 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style a1 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a3 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a4 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b0 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style b1 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style b2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style b3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b4 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style c0 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style c1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style c3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c4 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：** 和太大就把右端永久淘汰（hi 左移），和太小就把左端永久淘汰（lo 右移）；本例三步对撞到 `[2,4]`。
+
 > ✅ **做 `two_sum_sorted`**:`lo,hi = 0, n-1`;和小 `lo+=1`、和大 `hi-=1`、等返回。O(n) / O(1)。
 
 ---
@@ -206,6 +245,34 @@ def move_zeroes(nums):
 ### 复杂度
 - 时间 O(n):fast 走一遍,每个元素至多交换一次。
 - 空间 O(1):原地。
+
+```mermaid
+flowchart TB
+    subgraph before["fast 探到非零"]
+        direction LR
+        b0["1"] --- b1["3"] --- b2["0 slow"] --- b3["0"] --- b4["12 fast"]
+    end
+    subgraph after["swap 后非零段右扩"]
+        direction LR
+        d0["1"] --- d1["3"] --- d2["12"] --- d3["0 slow"] --- d4["0"]
+    end
+    before -->|"swap slow 与 fast"| after
+
+    style before fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style after fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style b0 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style b1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style b2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b4 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style d0 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style d1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style d2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style d3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style d4 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+```
+
+**这张图要你看懂：** `slow` 左侧是已就位的非零段，`slow` 到 `fast` 之间是甩到中间的零；fast 探到非零就和 slow 交换，非零段扩一格。
 
 > ✅ **做 `move_zeroes`**:`slow=0`;`for fast`:非零就 `swap(nums[slow], nums[fast])` 且 `slow+=1`;返回 nums。O(n) / O(1)。
 
@@ -331,6 +398,24 @@ def length_of_longest_substring(s):
 
 ### 复杂度
 - 时间 O(n)(均摊);空间 O(min(n, 字符集大小))。
+
+```mermaid
+flowchart LR
+    w0["窗口 pw 合法无重复"]
+    hit["右扩纳入 w"]
+    s1["吐掉 p 剩 w 仍重复"]
+    s2["再吐旧 w 只留新 w"]
+    w0 -->|"右扩"| hit
+    hit -.->|"while 左缩"| s1
+    s1 -.->|"while 再缩"| s2
+
+    style w0 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style hit fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style s1 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style s2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 右扩碰到重复必须 `while` 一直吐到新字符不在窗口里——`if` 只吐一次，`"pwwkew"` 会残留两个 `w`。
 
 > ✅ **做 `length_of_longest_substring`**:窗口 `set`;右扩;重复则 `while` 左缩;`add`;`best = max(best, 宽)`。O(n)。
 
@@ -541,6 +626,34 @@ def min_window(s, t):
 ### 复杂度
 - 时间 O(|s| + |t|):right 走 |s|,left 全程 ≤ |s|(均摊论证同 LC3);建 Counter O(|t|)。
 - 空间 O(|t| 不同字符数)。
+
+```mermaid
+flowchart TD
+    exp["右扩纳入 ch"]
+    chk{"纳入前 need 大于 0?"}
+    decM["missing 减 1"]
+    always["need 一律减 1"]
+    cover{"missing 等于 0?"}
+    shrink["while 左缩到刚缺 沿途记下最短"]
+    wait["未涵盖 继续右扩"]
+    exp --> chk
+    chk -->|"是 真补缺"| decM
+    chk -->|"否 冗余"| always
+    decM --> always
+    always --> cover
+    cover -->|"是"| shrink
+    cover -->|"否"| wait
+
+    style exp fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style chk fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style decM fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style always fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style cover fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style shrink fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style wait fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：** 右扩只有 `need[ch] > 0` 才算补缺（`missing -= 1`）；`missing == 0` 后 `while` 左缩，一直缩到刚又不满足才停，沿途抢最短。
 
 > ✅ **做 `min_window`**:`need=Counter(t)`,`missing=len(t)`;右扩(`need[ch]>0` 才减 missing,再 `need[ch]-=1`);`while missing==0` 左缩(出窗口 `+=1`,变正则 `missing+=1`),沿途记最短;哨兵 `length=len(s)+1`。O(|s|+|t|)。
 

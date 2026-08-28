@@ -86,6 +86,22 @@ prompt | model | parser # RunnableSequence(RunnableSequence(prompt, model), pars
 
 > 🔴 **本作业不调真实 LLM**:model 步用 `RunnableLambda` 包一个普通函数(FakeModel)。真实场景把这一步换成 `ChatAnthropic`/`ChatOpenAI` 即可,链的其余部分一行不动(§30.9)。
 
+```mermaid
+flowchart LR
+    IN["dict 输入"] --> P["prompt"]
+    P -->|"|"| M["model"]
+    M -->|"|"| PAR["parser"]
+    PAR --> OUT["str 输出"]
+
+    style IN fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style P fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style M fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style PAR fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style OUT fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** `|` 是 `__or__` 运算符重载，每次返回新 Runnable；`invoke` 时数据从左流到右。
+
 ---
 
 ## §30.2 PromptTemplate:`build_prompt` 🟢
@@ -196,6 +212,24 @@ chain.invoke({"q": "你好"})   # "A:Q:你好"
 ⚠️ **为什么中间要 `to_text` 适配?** prompt 步输出的是 `StringPromptValue`(§30.2)。**真实 ChatModel 原生能直接吃 PromptValue**;但我们的 FakeModel 是个只会 `f"{s}"` 拼接的普通函数,遇到 PromptValue 会渲染成对象 repr(乱码)。所以加一步 `to_text` 把 PromptValue 转成纯字符串。
 
 > 🔴 这是「模拟 vs 真实」的差异:**真实链 `prompt | ChatAnthropic | StrOutputParser` 不需要 `to_text`**(见 §30.9)。教程这么写是为了让 FakeModel 能跑通——顺带教你一招:管道里随时可以插一个 `RunnableLambda` 做「数据适配」。
+
+```mermaid
+flowchart LR
+    IN["dict 输入"] -->|"invoke"| P["PromptTemplate"]
+    P -->|"|"| T["to_text"]
+    T -->|"|"| M["FakeModel"]
+    M -->|"|"| R["StrOutputParser"]
+    R --> OUT["str"]
+
+    style IN fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style P fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style T fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style M fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style R fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style OUT fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 教学链在 FakeModel 前多一步 `to_text`（PromptValue 转 str）；真实链 `prompt | ChatAnthropic | StrOutputParser` 可拿掉它。
 
 `hasattr(v, "to_string")` 是 duck typing(Ch28 用过):有 `to_string` 就用它(PromptValue),没有就 `str(v)` 兜底——这样 `to_text` 对字符串输入也安全。
 

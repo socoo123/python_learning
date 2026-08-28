@@ -180,6 +180,27 @@ def get_db():
 
 ✅ 需要清理的资源才用 yield 依赖;纯计算/解析用普通函数依赖即可(§16.3/§16.4)。
 
+```mermaid
+flowchart TD
+    req[请求进入] --> setup["① setup open"]
+    setup --> yld["② yield session 注入端点"]
+    yld --> ok["端点正常 200"]
+    yld --> fail["端点抛 404"]
+    ok --> tear["③ finally close"]
+    fail -.->|"即使 404"| tear
+    tear --> resp[响应发出]
+
+    style req fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style setup fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style yld fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style ok fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style fail fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style tear fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style resp fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+这张图要你看懂：open 在 yield 之前；session 交给端点后，无论 200 还是 404，finally 里的 close 都会执行。
+
 > ✅ 做 `get_db`:三段式——`DB_AUDIT.append("open")` → `try: yield {"queries": 0}` → `finally: DB_AUDIT.append("close")`。测试会验证「404 时 close 也执行」。
 
 ---
@@ -336,6 +357,28 @@ def admin_stats(x_token: str | None = Header(default=None)):
 ```
 
 ✅ **正确写法**:`admin: dict = Depends(require_admin)`,链条自动串联。
+
+```mermaid
+flowchart TD
+    req["请求进入 /admin/stats"] --> gcu["① get_current_user"]
+    gcu --> tok{"token 有效?"}
+    tok -->|"否"| e401["短路 401 端点不执行"]
+    tok -->|"是 得到 user"| rad["② require_admin"]
+    rad --> role{"role 是 admin?"}
+    role -->|"否"| e403["短路 403 端点不执行"]
+    role -->|"是"| ep["③ 进入端点 admin_stats"]
+
+    style req fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style gcu fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style tok fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style e401 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style rad fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style role fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style e403 fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style ep fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+这张图要你看懂：请求先跑 `get_current_user`，无 token 在这里 401 短路、`require_admin` 根本没机会执行；认证通过后才检查角色，非 admin 在这里 403 短路；两关都过才进端点。
 
 > ✅ 做 `require_admin`:签名已给定(`user: dict = Depends(get_current_user)`),函数体:`role != "admin"` → 403,否则 `return user`。
 

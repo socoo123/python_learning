@@ -432,6 +432,21 @@ top_n_by_price(iter(products), n=3)
 
 `zip`、`map`、`filter`、`enumerate`、`range`、文件对象……返回的都是迭代器。Python 里「迭代」是统一协议,本章所有函数本质上都在玩这套协议。
 
+```mermaid
+flowchart LR
+    A["可迭代对象 · list、dict、str · 能反复调用 · iter() · 每次得到新游标"]
+    B["迭代器 · 一次性游标 · next() 走到 · StopIteration · 用完即弃 · 不能回退"]
+    C["生成器 · 用 yield · 写出来的迭代器 · 也只能走一次"]
+    A ~~~ B
+    B ~~~ C
+
+    style A fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style B fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style C fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：** `list` 等可迭代对象能反复 `iter()` 造新游标；迭代器是一次性游标，`next()` 走到 `StopIteration` 就废；生成器只是「用 `yield` 写出来的迭代器」，所以也只能走一次。
+
 > ✅ **做 `top_n_by_price` 题**:`list()` 物化 → `sorted(key=..., reverse=True)[:n]` → 推导式取 name。
 
 ---
@@ -446,11 +461,6 @@ top_n_by_price(iter(products), n=3)
 # ❌ 一次性读进内存 → 10GB 日志直接 OOM
 all_lines = open("huge.log").readlines()
 errors = [line for line in all_lines if "ERROR" in line]
-```
-
-```
-列表版本:   读 1000 万行 → 内存存 1000 万行 → 过滤 → 还是巨大
-生成器版本: 读 1 行 → 判断 → 是 ERROR 就 yield 出去 → 内存里始终只有 1 行
 ```
 
 数据像水流过管道,不蓄水。这正是 Ch26(大日志流式分析)和 Ch33(LLM 流式 token)的地基。
@@ -520,6 +530,27 @@ gen = iter_error_lines(logs)
 ```
 
 > 🟡 **Java 对比**:最接近的是 `Stream`(惰性流水线)或手写 `Iterator`。但 Python 生成器用**普通 for + yield** 就写出来,比 Java 的 `Spliterator` / `Stream.Builder` 简单一个数量级。
+
+```mermaid
+flowchart TD
+    call["调用 · iter_error_lines · 只造机器 · 函数体没跑"]
+    freeze1["冻结 · next() / for · 驱动到 yield · 交出一行 · 内存只有这一行"]
+    wake["复苏 · 再次 next() · 从冻结处继续"]
+    freeze2["再冻结 · 下一个 yield · 再交一行"]
+    done["StopIteration 没得产了"]
+    call --> freeze1
+    freeze1 --> wake
+    wake --> freeze2
+    freeze2 --> done
+
+    style call fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style freeze1 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style wake fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style freeze2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style done fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：** 调用 `iter_error_lines` 只造机器、函数体一行没跑；每次 `next()` / `for` 才跑到下一个 `yield` 冻结并交出一行；内存里始终只有这一行，产完就 `StopIteration`。
 
 ### 了解:生成器可以串成管道
 

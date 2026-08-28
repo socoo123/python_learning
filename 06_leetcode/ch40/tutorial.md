@@ -74,15 +74,60 @@
 
 以全排列 `[1,2,3]` 为例,决策树长这样:
 
+```mermaid
+flowchart TD
+    root["[] 还没选"]
+    p1["[1]"]
+    p2["[2]"]
+    p3["[3]"]
+    p12["[1,2]"]
+    p13["[1,3]"]
+    p21["[2,1]"]
+    p23["[2,3]"]
+    p31["[3,1]"]
+    p32["[3,2]"]
+    p123["[1,2,3]"]
+    p132["[1,3,2]"]
+    p213["[2,1,3]"]
+    p231["[2,3,1]"]
+    p312["[3,1,2]"]
+    p321["[3,2,1]"]
+
+    root --> p1
+    root --> p2
+    root --> p3
+    p1 --> p12
+    p1 --> p13
+    p2 --> p21
+    p2 --> p23
+    p3 --> p31
+    p3 --> p32
+    p12 --> p123
+    p13 --> p132
+    p21 --> p213
+    p23 --> p231
+    p31 --> p312
+    p32 --> p321
+
+    style root fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style p1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p12 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p13 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p21 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p23 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p31 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p32 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p123 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p132 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p213 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p231 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p312 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p321 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
 ```
-                        []                      ← 第 0 层:还没选
-          /             |             \
-       [1]             [2]             [3]      ← 第 1 层:第 1 个位置选谁
-      /   \           /   \           /   \
-   [1,2] [1,3]    [2,1] [2,3]    [3,1] [3,2]    ← 第 2 层:从剩下的里选
-     |     |        |     |        |     |
- [1,2,3][1,3,2]  [2,1,3][2,3,1]  [3,1,2][3,2,1] ← 叶子:6 个排列
-```
+
+**这张图要你看懂：**黄根是空路径；每层从没用过的数里挑一个填位置；6 个绿叶子就是 3! 个排列。走完 `[1,2]→[1,2,3]` 回退时要把 `3` pop 掉，才能走 `[1,3]`。
 
 DFS 走完整棵树 = 枚举所有排列。「撤销」发生在:走完 `[1,2]→[1,2,3]` 回退到 `[1,2]` 时,要把 `3` 从 path 里弹掉,才能继续走 `[1,3]`。
 
@@ -710,6 +755,45 @@ return farthest >= nums.length - 1;
 
 > 🟢 **Java 秒懂**:逐行同构,无任何语言差异点。背的是**思路**(可达区间连续),不是代码。
 
+```mermaid
+flowchart TB
+    subgraph step0["起步 farthest=0"]
+        direction LR
+        a0["2 i=0 当前"] --- a1["3 i=1"] --- a2["1 i=2"] --- a3["1 i=3"] --- a4["4 i=4 末尾"]
+    end
+    subgraph step1["i=0 起跳 farthest=2"]
+        direction LR
+        b0["2 已走"] --- b1["3 覆盖"] --- b2["1 覆盖到这"] --- b3["1"] --- b4["4 末尾"]
+    end
+    subgraph step2["i=1 起跳 farthest=4"]
+        direction LR
+        c0["2"] --- c1["3 已走"] --- c2["1"] --- c3["1"] --- c4["4 盖住末尾"]
+    end
+    step0 -->|"0+2=2"| step1
+    step1 -->|"1+3=4"| step2
+
+    style step0 fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style step1 fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style step2 fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style a0 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style a1 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a3 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style a4 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style b0 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style b3 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style b4 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style c0 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c1 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style c4 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**可达区间是连续的 `[0, farthest]`。从 i=0 跳 2 覆盖到下标 2；再从 i=1 跳 3 把 farthest 推到 4，已经盖住末尾，所以 True。
+
 ### ❌ 错误写法 → ✅ 正确写法:判断顺序
 
 ```python
@@ -760,6 +844,21 @@ for i in range(n):
 | 答案规模 | n! | 2ⁿ | 指数(取决于 target) | n! / (重复!) |
 
 > 骨架是同一个 `for + append + dfs + pop`,差别只在四件事:**何时收、从哪选、传 i 还是 i+1、怎么剪枝**。面试写回溯时心里默念这四个问题,逐一回答完代码就出来了。
+
+```mermaid
+flowchart LR
+    perm["排列 LC46 · 每层选: · 全体 + used · 何时收: · 叶子才收 · 传参: · used 过滤已用"]
+    sub["子集 LC78 · 每层选: · 只往后 start · 何时收: · 进函数就收 · 传参: · dfs(i+1) 一次"]
+    comb["组合 LC39 · 每层选: · 只往后 start · 何时收: · remain==0 · 传参: · dfs(i) 可重复"]
+    perm ~~~ sub
+    sub ~~~ comb
+
+    style perm fill:#E1F5FE,stroke:#0277BD,color:#1f1f1f
+    style sub fill:#F3E5F5,stroke:#7B1FA2,color:#1f1f1f
+    style comb fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**排列每层扫全体、叶子才收；子集只往后选、进函数就收；组合也只往后选，但 `remain==0` 才收，且递归传 `i` 允许重复用当前数。
 
 ### 回溯 vs 贪心 vs DP 选型
 

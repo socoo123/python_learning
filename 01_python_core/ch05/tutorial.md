@@ -459,6 +459,44 @@ Duck.__mro__     # 方法查找顺序(MRO,C3 线性化算法):
                  # (Duck, Flyer, Swimmer, object)
 ```
 
+```mermaid
+flowchart TD
+    subgraph inherit["继承层次"]
+        Duck["Duck"]
+        Flyer["Flyer fly"]
+        Swimmer["Swimmer swim"]
+        ObjBase["object"]
+        Duck --> Flyer
+        Duck --> Swimmer
+        Flyer --> ObjBase
+        Swimmer --> ObjBase
+    end
+
+    subgraph mro["MRO 查找顺序"]
+        direction LR
+        mDuck["Duck 先查本类"]
+        mFlyer["Flyer 命中 fly"]
+        mSwimmer["Swimmer 命中 swim"]
+        mObj["object"]
+        mDuck -.->|"1"| mFlyer
+        mFlyer -.->|"2"| mSwimmer
+        mSwimmer -.->|"3"| mObj
+    end
+
+    style inherit fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style Duck fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style Flyer fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style Swimmer fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style ObjBase fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style mro fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style mDuck fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style mFlyer fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style mSwimmer fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style mObj fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：查 `fly` / `swim` 时沿 `Duck.__mro__` 从左到右走（Duck → Flyer → Swimmer → object），不是运行时乱选；菱形两条路到 `object` 被收成一条线，工程上单继承 + 组合优先。**
+
 > ⚠️ **Java 老手自诫**:多继承的菱形问题(diamond)能出诡异 bug。工程实践里**单继承 + 组合优先**(has-a 优于 is-a),多继承主要给「Mixin」用。面试能说出「MRO = 方法查找顺序,`Cls.__mro__` 可查」就够。
 
 > ✅ **做 `make_discount_cart_class` 题**:函数体内先写父类 `Cart`(`__init__`/`add`/`@property total`),再写子类 `DiscountedCart(Cart)` 覆盖 `total`,用 `super().total` 复用。**返回子类**,别返回父类。

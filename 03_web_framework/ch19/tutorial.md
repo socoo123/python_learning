@@ -249,6 +249,48 @@ def list_products(): ...
 
 ✅ **正确写法**:`db: Session = Depends(get_db)`,让框架每请求注入新的。
 
+```mermaid
+flowchart TD
+    subgraph G["全局一份"]
+        ENG["engine 全局连接池"]
+        FACT["SessionLocal 工厂"]
+        ENG --> FACT
+    end
+
+    subgraph RA["请求 A"]
+        SA["SessionLocal()"]
+        DA["Depends(get_db) yield 注入端点"]
+        CA["finally close"]
+        SA --> DA --> CA
+    end
+
+    subgraph RB["请求 B"]
+        SB["SessionLocal()"]
+        DB["Depends(get_db) yield 注入端点"]
+        CB["finally close"]
+        SB --> DB --> CB
+    end
+
+    FACT --> SA
+    FACT --> SB
+    FACT -.->|"禁止"| BAD["禁止全局共享一个 Session 并发会污染缓存和待办"]
+
+    style G fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style ENG fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style FACT fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style RA fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style RB fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style SA fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style SB fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style DA fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style DB fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style CA fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style CB fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style BAD fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：**engine 和 SessionLocal 工厂全局一份；每个 HTTP 请求各自 `SessionLocal()` 拿到独立 Session，经 `Depends(get_db)` yield 注入、finally close。两个并发请求绝不能共用一个 Session，否则脏缓存和未提交改动会互相污染。
+
 ---
 
 ## §19.5 查询:select / where / 分页 / db.get(对应:`list_products`、`get_product`)🔴
@@ -499,6 +541,37 @@ if user is None:
 ```
 
 ✅ **正确写法**:**所有校验在前,所有改动在后**(validate-then-mutate)。
+
+```mermaid
+flowchart TD
+    V["① 校验用户商品库存"]
+    U["② 扣库存 UPDATE 只是 Session 待办"]
+    I["③ 写订单 INSERT 只是 Session 待办"]
+    C["④ 一次 commit()"]
+    S["库存与订单同生共死"]
+    E["commit 前抛异常 库存不足"]
+    D["待办全部丢弃 不用手写 rollback"]
+    X["禁止中途 commit"]
+
+    V -->|"库存够"| U
+    U --> I
+    I --> C
+    C --> S
+    V -->|"库存不足"| E
+    E --> D
+    U -.->|"禁止"| X
+
+    style V fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style U fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style I fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style C fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style S fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style E fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style D fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style X fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：**扣库存 UPDATE 和写订单 INSERT 在 `commit` 前都只是 Session 待办；最后一次 `commit()` 才把它们包成一个事务。库存不足在 commit 前抛异常 = 待办全丢，不用手写 rollback。红节点是禁区：中途 commit 会留下「库存扣了、订单没有」。
 
 ### 关联查询:`select(双模型).join(...)`
 

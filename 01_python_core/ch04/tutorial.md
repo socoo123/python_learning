@@ -353,6 +353,37 @@ len(query_stock.records)                # 2 —— 每次调用一条耗时,单�
 
 > 🟡 **Java 对比**:Java 的 `@Transactional`/`@Cacheable` 注解本身只是元数据,靠 Spring 运行时代理(反射 + 字节码增强)才生效。Python 装饰器是**语言层面的函数变换**,不依赖任何框架——你刚写的 20 行,就是一个微型 Spring AOP。
 
+```mermaid
+flowchart TD
+    subgraph DEF["定义时只包一次"]
+        take["deco 收下原函数"] --> make["造出 wrapper"]
+        make --> reb["名字改指向 wrapper f = deco(f)"]
+    end
+
+    reb --> invoke["之后调用这个名字"]
+
+    subgraph RUN["调用时走 wrapper"]
+        before["前增强 计数 / 记起点"] --> orig["调被包住的原函数"]
+        orig --> after["后增强 记耗时"]
+        after --> retn["原样返回"]
+    end
+
+    invoke --> before
+
+    style DEF fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style RUN fill:#E8F5E9,stroke:#388E3C,color:#1f1f1f
+    style take fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style make fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style reb fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style invoke fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style before fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style orig fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style after fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style retn fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 装饰在定义时发生一次：`f = deco(f)` 之后名字指向 wrapper；每次调用都先进 wrapper，前/后增强再调被包住的原函数，原函数源码一行没动。
+
 ### ❌ 错误写法 → ✅ 正确写法
 
 ```python
@@ -415,8 +446,6 @@ def f(): ...
 # 等价于:
 def f(): ...
 f = retry(times=3)(f)
-#    └──────┬─────┘ └┬┘
-#    先调用,得到 decorator   再用 decorator 包 f
 ```
 
 `@retry(times=3)` 里的 `retry(times=3)` 是**先执行的一次调用**,它必须返回一个装饰器(就是 `decorator`),再用它包 `f`——所以比普通装饰器多一层。每层各管一件事:**外层收参数、中层收函数、内层干活**。
@@ -446,6 +475,48 @@ def retry(times):
 > 🟡 **Java 类比**:你刚写的就是微型版 Spring Retry / Resilience4j 的 `@Retry(maxAttempts=3)`——那边是框架注解+代理,这边是 15 行纯函数。
 >
 > 🔑 **`raise last_exc` 为什么放循环外**:放循环内第一次失败就抛了,失去重试意义;循环走完才抛,才是「times 次机会都用完了」。测试会验证失败调用次数**恰好**等于 `times`,且抛的是最后一次异常。
+
+```mermaid
+flowchart TD
+    subgraph LAY["定义时三层"]
+        L1["外层收参数 retry(times=3)"] --> L2["返回 decorator"]
+        L2 --> L3["中层收函数 decorator 收下原函数"]
+        L3 --> L4["返回 wrapper"]
+        L4 --> L5["名字指向 wrapper f = retry(times=3)(f)"]
+    end
+
+    subgraph CYC["调用时最多试 3 次"]
+        try1["第 1 次 try"] --> s1{"成功?"}
+        s1 -->|"是"| rOk["立刻 return"]
+        s1 -->|"否 记下异常"| try2["第 2 次 try"]
+        try2 --> s2{"成功?"}
+        s2 -->|"是"| rOk
+        s2 -->|"否 记下异常"| try3["第 3 次 try"]
+        try3 --> s3{"成功?"}
+        s3 -->|"是"| rOk
+        s3 -->|"否"| boom["times 用尽 raise last_exc"]
+    end
+
+    L5 --> try1
+
+    style LAY fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style CYC fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style L1 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style L2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style L3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style L4 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style L5 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style try1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style s1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style rOk fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style try2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style s2 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style try3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style s3 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style boom fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+```
+
+**这张图要你看懂：** 定义时三层：`retry(times=3)` 先返回 decorator，再用它包函数，等价于 `f = retry(times=3)(f)`。调用时成功立刻 return；失败记下异常再试；3 次用尽才 `raise last_exc`。
 
 > ✅ **做 `retry` 题**:照三层骨架写;`try` 里 `return`,`except` 里记 `last_exc`,循环后 `raise last_exc`。`@functools.wraps(func)` 别漏。
 

@@ -65,10 +65,34 @@
 
 JWT(JSON Web Token)就是一个**带签名的字符串**,用 `.` 分三段,每段都是 Base64URL 编码:
 
+```mermaid
+flowchart TB
+    subgraph TOKEN["三段用点号拼接"]
+        direction LR
+        H["header alg 与 typ"]
+        P["payload · Base64 明文 · 谁都能解 · 绝不能放密码"]
+        SIG["signature 防篡改不是防偷看"]
+        H -->|"用 . 拼接"| P
+        P -->|"用 . 拼接"| SIG
+    end
+
+    KEY["SECRET_KEY"]
+    hm["HMAC(header.payload, SECRET_KEY)"]
+    KEY --> hm
+    hm -->|"生成签名"| SIG
+
+    P -.->|"改 payload 但没有 key"| FAIL["验签失败 401"]
+
+    style TOKEN fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style H fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style P fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style SIG fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style KEY fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style hm fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style FAIL fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
 ```
-eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsInJvbGUiOiJhZG1pbiJ9.s8f3k2j...
-└──── header ────┘└──────────── payload ────────────┘└─ signature ─┘
-```
+
+这张图要你看懂：三段用 `.` 拼接；payload 是 Base64 明文、谁都能解、绝不能放密码；签名是 HMAC(header.payload, SECRET_KEY)，防篡改不是防偷看；改 payload 但没有 key → 验签失败 401。
 
 | 段 | 内容 | 解码后(Java 对照) |
 |----|------|--------|
@@ -358,27 +382,26 @@ def admin_dashboard(admin: dict = Depends(require_admin)):
 
 ## §21.6 整体流程串起来(对照图)
 
+```mermaid
+sequenceDiagram
+    participant C as 客户端
+    participant T as token 登录
+    participant M as me 当前用户
+    participant A as admin 看板
+
+    C->>T: POST /token alice 密码
+    T-->>C: access_token
+
+    C->>M: GET /me 带 Bearer
+    Note over M: 抽 token 并验签
+    M-->>C: alice role admin
+
+    C->>A: GET /admin/stats 用 bob 的 token
+    Note over A: 验签通过但 RBAC 短路
+    A-->>C: 403 需要管理员权限
 ```
-┌──────────┐   POST /token (alice/alice123)        ┌──────────────┐
-│  客户端   │ ─────────────────────────────────────▶│   /token     │
-│          │                                        │ authenticate │
-│          │ ◀───────────────────────────────────── │ create_token │
-│          │   {"access_token":"eyJ...","bearer"}   └──────────────┘
-│          │
-│          │   GET /me   Authorization: Bearer eyJ...
-│          │ ─────────────────────────────────────▶┌──────────────┐
-│          │                                        │oauth2_scheme │ → 提取 token(没带→401)
-│          │                                        │get_current_  │ → decode 验签+exp→{"username","role"}
-│          │                                        │   _user      │
-│          │ ◀───────────────────────────────────── │   /me        │ → {"username":"alice","role":"admin"}
-│          │                                        └──────────────┘
-│          │   GET /admin/stats   Authorization: Bearer eyJ...(bob 的 token)
-│          │ ─────────────────────────────────────▶┌──────────────┐
-│          │                                        │get_current_  │ → 通过(bob 合法)
-│          │                                        │require_admin │ → role!="admin" → 403 短路
-│          │ ◀───────────────────────────────────── │              │
-└──────────┘   403 {"detail":"需要管理员权限"}        └──────────────┘
-```
+
+这张图要你看懂：登录发 token、带 token 读 `/me`、非 admin 打 `/admin/stats` 会在授权依赖上 403，鉴权不要写进端点 if。
 
 ---
 

@@ -193,6 +193,48 @@ body {
 .tutorial pre .hljs-symbol,
 .tutorial pre .hljs-link { color: #ff4fa3; }
 
+/* Mermaid：卡片底 + 可横滚，不被 prose 拉变形 */
+.tutorial .mermaid-wrap {
+  overflow-x: auto;
+  margin: 1.25rem auto;
+  padding: 0.75rem 0.85rem;
+  background: rgb(var(--bg-card));
+  border: 1px solid rgb(var(--border-subtle));
+  border-radius: 0.75rem;
+  max-width: min(100%, 40rem);
+}
+.tutorial .mermaid-wrap svg {
+  display: block;
+  margin-inline: auto;
+  max-width: 100%;
+  height: auto;
+}
+/* prose 的 p { line-height:1.75rem } 会撑破 mermaid 节点高度，两行字上下被裁 */
+.tutorial .mermaid-wrap .nodeLabel,
+.tutorial .mermaid-wrap .edgeLabel,
+.tutorial .mermaid-wrap .label,
+.tutorial .mermaid-wrap foreignObject,
+.tutorial .mermaid-wrap foreignObject div,
+.tutorial .mermaid-wrap foreignObject span {
+  overflow: visible;
+}
+.tutorial .mermaid-wrap .nodeLabel p,
+.tutorial .mermaid-wrap .edgeLabel p,
+.tutorial .mermaid-wrap .label p,
+.tutorial .mermaid-wrap .noteText p {
+  margin: 0;
+  line-height: 1.25;
+  font-size: 13px;
+}
+.tutorial .mermaid-wrap--error {
+  border-color: rgb(var(--drac-red));
+}
+.tutorial .mermaid-error {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: rgb(var(--drac-red));
+}
+
 /* 终端区(固定深色,不随主题变) */
 .terminal-output {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;

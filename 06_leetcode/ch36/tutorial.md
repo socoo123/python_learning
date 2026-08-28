@@ -192,6 +192,24 @@ def two_sum(nums, target):
     return []
 ```
 
+```mermaid
+flowchart TD
+    cur["扫到 nums[i]"] --> q["先查 seen 里有没有 target - nums[i]"]
+    q --> d{"在不在?"}
+    d -->|"在"| hit["命中:返回两个下标"]
+    d -->|"不在"| reg["再登记 seen[nums[i]] = i"]
+    reg --> nxt["继续下一格"]
+
+    style cur fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style q fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style d fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style hit fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style reg fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style nxt fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+```
+
+**这张图要你看懂：** 每一步都是「先拿 `target - nums[i]` 去 seen 里查，没有才把当前值登记」。查的是已经扫过的历史；当前格子还没进表，所以不会和自己配对，也不会先全存再查出 `[0, 0]`。
+
 ### 真实场景例(已验证)
 
 ```python
@@ -310,13 +328,7 @@ buckets["".join(sorted(word))].append(word)
 
 ### 前缀和(讲透这个概念)
 
-**前缀和** `prefix[i]` = `nums[0] + ... + nums[i-1]`,约定 `prefix[0] = 0`(空前缀)。则任意连续子数组 `nums[i..j]` 之和 = `prefix[j+1] - prefix[i]`:
-
-```
-nums:   [1, 2, 3]
-prefix: [0, 1, 3, 6]      # prefix[0]=0, prefix[1]=1, prefix[2]=3, prefix[3]=6
-nums[1..2] = 2+3 = 5 = prefix[3] - prefix[1] = 6 - 1
-```
+**前缀和** `prefix[i]` = `nums[0] + ... + nums[i-1]`,约定 `prefix[0] = 0`(空前缀)。则任意连续子数组 `nums[i..j]` 之和 = `prefix[j+1] - prefix[i]`。
 
 子数组和 = `k` ⟺ `prefix[j] - prefix[i] == k` ⟺ **`prefix[i] == prefix[j] - k`**。
 
@@ -348,6 +360,37 @@ def subarray_sum(nums, k):
         prefix_count[cur] = prefix_count.get(cur, 0) + 1  # 后登记
     return count
 ```
+
+```mermaid
+flowchart TD
+    subgraph pref["nums=[1, 2, 3] 且 k=3"]
+        p0["空前缀 0"] --> p1["前缀 1"]
+        p1 --> p2["前缀 3"]
+        p2 -->|"差为 k"| p3["前缀 6"]
+        p0 -.->|"差为 k"| p2
+    end
+
+    subgraph hash["哈希查之前有多少个 cur-k"]
+        seed["起手 {0: 1} 空前缀出现 1 次"] --> ask["固定右端 cur 查左端 cur-k 的次数"]
+        ask --> acc["count 累加该次数"]
+        acc --> rec["再登记 cur"]
+    end
+
+    p3 --> seed
+
+    style pref fill:#FFF8E1,stroke:#F9A825,color:#1f1f1f
+    style hash fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style p0 fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style p1 fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style p2 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style p3 fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style seed fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style ask fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style acc fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style rec fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+```
+
+**这张图要你看懂：** 子数组和 = `prefix[右] - prefix[左]` = k，所以固定右端 `cur` 时，只要查历史上有多少个前缀等于 `cur - k`。`{0: 1}` 就是那个空前缀——没有它，从下标 0 起整段和为 k 的子数组会被漏掉。
 
 ### 真实场景例(已验证)
 

@@ -20,4 +20,7 @@ function curriculumIngestPlugin() {
 export default defineConfig({
   plugins: [react(), curriculumIngestPlugin(), learnerStatePlugin()],
   server: { port: 5188, open: true },
+  optimizeDeps: {
+    exclude: ["mermaid"],
+  },
 });

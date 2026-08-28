@@ -433,15 +433,35 @@ print(f"解析耗时: {t.elapsed:.3f}s")
 
 ### 执行时序图
 
+```mermaid
+sequenceDiagram
+    participant Py as with 语句
+    participant T as Timer
+    participant B as Body
+
+    Py->>T: "__enter__()"
+    T-->>Py: return self 绑定给 t
+    Py->>B: 执行 with 块
+    Note over Py,T: 无论是否异常都会调用退出方法
+
+    alt 无异常
+        B-->>Py: 正常结束
+        Py->>T: "__exit__(None, None, None)"
+        Note over T: 三个参数都是 None
+        T-->>Py: return False
+    else 有异常
+        B--xPy: 抛出异常
+        Py->>T: "__exit__(exc_type, exc_val, exc_tb)"
+        Note over T: 参数是异常信息
+        alt 返回 False
+            T-->>Py: 不吞异常,继续向外抛
+        else 返回 True
+            T-->>Py: 吞掉异常
+        end
+    end
 ```
-with Timer() as t:        ──►  t.__enter__()   → return self 绑定给 t
-    <body>                ──►  执行 with 块
-    (正常结束 or 抛异常)   ──►  t.__exit__(exc_type, exc_val, exc_tb)
-                                 ├─ 无异常:三个参数都是 None
-                                 ├─ 有异常:参数是异常信息
-                                 └─ return False → 异常继续抛
-                                    return True  → 异常被吞掉!
-```
+
+**这张图要你看懂：**先 `__enter__` 再跑 with 块，最后 `__exit__` 无论是否异常都会调。返回 `False` 不吞异常；返回 `True` 会把异常吞掉。
 
 **记住三条**:
 
@@ -502,6 +522,25 @@ def db_transaction(db: dict):
 | `finally` | `__exit__` 的清理 | **无论如何** |
 
 > 🤯 **with 块抛异常时发生了什么**:异常被「注入」到生成器的 `yield` 处,生成器在 `yield` 那一行抛同一个异常。所以 `try/except/finally` 必须包住 `yield`,才能分别处理「成功 commit」「失败 rollback」「清理」。
+
+```mermaid
+flowchart TD
+    ENTER["① yield 之前 · 等于 __enter__ · 初始化 pending"] --> YLD["② yield db 值交给 as"]
+    YLD --> Q{"with 块抛异常?"}
+    Q -->|"否"| COMMIT["③ yield 之后正常 commit"]
+    Q -->|"是"| ROLL["④ except · 在 yield 处复苏 · rollback 再 raise"]
+    COMMIT --> FIN["⑤ finally 无论如何清空 pending"]
+    ROLL -.->|"即使失败"| FIN
+
+    style ENTER fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style YLD fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style Q fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style COMMIT fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style ROLL fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style FIN fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+```
+
+**这张图要你看懂：**yield 前是 `__enter__`，yield 的值交给 `as`；块正常结束走 commit，异常在 yield 处复苏走 rollback；`finally` 两条路都会清理。
 
 ### 真实场景:模拟数据库事务
 

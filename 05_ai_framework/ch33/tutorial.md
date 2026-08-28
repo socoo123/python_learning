@@ -74,6 +74,22 @@
 
 > 🟡 **Java 对比**：= 你绝不会把 `DataSource` 注入到前端 JS 里，而是包一层 REST Controller。LLM 就是新时代的「数据库」——慢、贵、要鉴权，所以必须有个服务端守门人。这一章学的就是怎么写这个守门人。
 
+```mermaid
+sequenceDiagram
+ participant Br as 浏览器
+ participant Gw as 后端守门人
+ participant Llm as LLM
+
+ Br--xLlm: 禁止直连 SDK
+ Br->>Gw: "POST /chat"
+ Note over Gw: 守门人做四件事 key 限流 缓存 换模型
+ Gw->>Llm: 调 LLM
+ Llm-->>Gw: reply
+ Gw-->>Br: JSON 回复
+```
+
+**这张图要你看懂：** 浏览器只打 `POST /chat`，绝不直连 SDK；API key、限流、缓存、换模型全由后端守门人做完，再去调 LLM。
+
 ---
 
 ## §33.2 LLM 协议与默认实现：EchoLLM 🟡
@@ -437,6 +453,18 @@ data: M\n\ndata: O\n\ndata: C\n\ndata: K\n\ndata: :\n\ndata: h\n\ndata: i\n\ndat
 | 协议 | `application/json` | `text/event-stream` |
 | 前端 | `fetch().then(r=>r.json())` | `EventSource` / `ReadableStream` |
 | 适用 | 后台任务、非交互 | ChatGPT 式聊天 UI |
+
+```mermaid
+flowchart LR
+    A["普通 /chat · 等全部生成完 · 一次返回 JSON · 首字约 10 秒"]
+    B["SSE 流式 · /chat/stream · text/event-stream · 生成器 yield · data: 字 · 结尾 data: [DONE] · 首字约 0.3 秒"]
+    A ~~~ B
+
+    style A fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style B fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：** 普通 `/chat` 干等到全文生成完才一次返回 JSON；`/chat/stream` 用生成器边 `yield` 边推 `data: …\n\n`，最后一条 `data: [DONE]` 宣告结束。
 
 > 🟡 教学版聚焦 SSE 机制本身，流式端点**没有**接限流/缓存——生产上它一样要限流（§33.7 的 `allow_request` 原样可用），缓存则要按「流式 chunks」维度重做，属于进阶话题。
 

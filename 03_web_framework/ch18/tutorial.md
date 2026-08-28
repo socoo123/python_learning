@@ -99,14 +99,35 @@ async def aggregate_product_info(product_id: int) -> dict:
 
 ### 本章主线的账:串行 vs 并发
 
-```text
-串行(await a; await b; await c):  总耗时 = a + b + c
-  线程 |--等商品50ms--|--等价格50ms--|--等库存50ms--|   ≈ 150ms
+```mermaid
+sequenceDiagram
+    participant EL as 事件循环
+    participant Prod as 商品
+    participant Price as 价格
+    participant Stock as 库存
 
-并发(gather(a, b, c)):            总耗时 ≈ max(a, b, c)
-  线程 |--同时等 商品/价格/库存--|                      ≈ 50ms
-        ↑ 等商品的 50ms 里,线程去启动了价格和库存的等待
+    Note over EL,Stock: 串行 墙上时钟约 150ms
+    EL->>Prod: await 商品
+    Prod-->>EL: 50ms 返回
+    EL->>Price: await 价格
+    Price-->>EL: 50ms 返回
+    EL->>Stock: await 库存
+    Stock-->>EL: 50ms 返回
+
+    Note over EL,Stock: gather 墙上时钟约 50ms
+    par 三个等待重叠
+        EL->>Prod: 同时等商品
+        Prod-->>EL: 50ms 返回
+    and
+        EL->>Price: 同时等价格
+        Price-->>EL: 50ms 返回
+    and
+        EL->>Stock: 同时等库存
+        Stock-->>EL: 50ms 返回
+    end
 ```
+
+**这张图要你看懂：**串行三次 IO 首尾相接,墙上时钟 ≈ 150ms;`gather` 三次 IO 同时等,墙上时钟 ≈ 50ms。全程一个线程——快的是等待重叠,不是多开线程。
 
 > 这就是产品经理要的结果:详情页接口从 150ms 压到 50ms,**没加一个线程**。测试会用计时断言证明这个差距(§18.4)。
 
@@ -323,18 +344,33 @@ async def get_product_aggregate(product_id: int):
 
 ### 真实场景例(请求生命周期)
 
-```text
-GET /products/3/aggregate   → 200 {"product": {...}, "price": {...}, "stock": {...}}
-                              等待 3 个下游的 50ms 里,事件循环去处理别人的请求
-GET /products/999/aggregate → 404(LookupError → HTTPException,Ch06 的 try/except 复用)
-GET /products/abc/aggregate → 422(路径参数校验,Ch15 的老朋友)
-```
+`GET /products/3/aggregate` → 200,返回三键聚合 dict。
+`GET /products/999/aggregate` → 404(`LookupError` → `HTTPException`,Ch06 的 try/except 复用)。
+`GET /products/abc/aggregate` → 422(路径参数校验,Ch15 的老朋友)。
 
 **为什么用 async 端点**:端点体内一旦 `await`(等 DB、等下游 API),事件循环就在等待期间**去处理别的请求**,单进程能扛的并发连接数大幅提升。这是 FastAPI / Starlette / aiohttp 的核心卖点。
 
 **关键纪律**:**async 端点里绝对不能调阻塞的同步代码**。一旦阻塞,整个事件循环(及其上所有请求)卡死。
 
 > 🟡 **Java 对比**:Tomcat 是「一个请求一个线程」,同步阻塞只卡自己那个线程;FastAPI 是「一个线程跑所有请求」,谁的代码阻塞,**全员陪葬**。这就是 async 的代价——要求整条调用链都是异步的(「async 全家桶」:DB 驱动用 asyncpg、HTTP 用 httpx.AsyncClient)。
+
+```mermaid
+sequenceDiagram
+    participant A as 请求A
+    participant B as 请求B
+    participant EL as 事件循环
+    participant Down as 三个下游
+
+    A->>EL: GET 商品3聚合
+    EL->>Down: gather 开始等
+    Note over B,EL: A 在 await,循环去处理别人
+    B->>EL: GET 健康检查
+    EL-->>B: 200 立刻回
+    Down-->>EL: 50ms 齐了
+    EL-->>A: 200 聚合结果
+```
+
+**这张图要你看懂：**请求 A 卡在 `await gather` 的 50ms 里把线程交还给事件循环,循环拿去把请求 B 处理完;下游齐了再把 A 写完。这就是 async 端点的吞吐来源——若 A 里写了阻塞调用,B 也得干等。
 
 ❌ **错误写法**(async 端点里调同步阻塞库):
 

@@ -108,6 +108,36 @@ def create_product(p: ProductCreate):
 
 > 🟡 **Java 对比**:FastAPI ≈ Spring Web + Bean Validation + Jackson + springdoc 的「类型驱动」子集。样板少,是因为**注解参与运行时**,不只是给人看的文档。
 
+```mermaid
+flowchart TD
+    types["类型注解 p: ProductCreate"]
+
+    subgraph PIPE["一次请求"]
+        req["POST /products JSON 进来"] --> parse["解析 JSON 变 Pydantic"]
+        parse --> check{"Field 校验?"}
+        check -->|"失败"| err["422 端点不跑"]
+        check -->|"成功"| ep["进端点 函数体才执行"]
+        ep --> ser["序列化 返回值变 JSON"]
+        ser --> ok["201 响应"]
+    end
+
+    types -.->|"驱动"| parse
+    types -.->|"生成"| docs["/docs"]
+
+    style PIPE fill:#E0F7FA,stroke:#0097A7,color:#1f1f1f
+    style types fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
+    style req fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style parse fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style check fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style err fill:#EF9A9A,stroke:#C62828,color:#1f1f1f
+    style ep fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style ser fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
+    style ok fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+    style docs fill:#A5D6A7,stroke:#388E3C,color:#1f1f1f
+```
+
+**这张图要你看懂：**一次 `POST /products` 先把 JSON 解析成 Pydantic 模型再 Field 校验；失败直接 422、端点函数根本不跑；成功才进业务、返回值再序列化。`p: ProductCreate` 这一套注解同时生成 `/docs`。
+
 可选体验(非作业必需):
 
 ```bash
