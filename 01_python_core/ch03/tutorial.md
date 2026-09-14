@@ -533,17 +533,17 @@ gen = iter_error_lines(logs)
 
 ```mermaid
 flowchart TD
-    call["调用 · iter_error_lines · 只造机器 · 函数体没跑"]
+    create["调用 · iter_error_lines · 只造机器 · 函数体没跑"]
     freeze1["冻结 · next() / for · 驱动到 yield · 交出一行 · 内存只有这一行"]
     wake["复苏 · 再次 next() · 从冻结处继续"]
     freeze2["再冻结 · 下一个 yield · 再交一行"]
     done["StopIteration 没得产了"]
-    call --> freeze1
+    create --> freeze1
     freeze1 --> wake
     wake --> freeze2
     freeze2 --> done
 
-    style call fill:#FFE082,stroke:#F9A825,color:#1f1f1f
+    style create fill:#FFE082,stroke:#F9A825,color:#1f1f1f
     style freeze1 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
     style wake fill:#80DEEA,stroke:#0097A7,color:#1f1f1f
     style freeze2 fill:#CE93D8,stroke:#7B1FA2,color:#1f1f1f
