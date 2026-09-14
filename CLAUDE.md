@@ -52,7 +52,9 @@
 
 ## B.5 课程页
 
-教程 Markdown 全文只读。页底给出仓库 assignment 路径和 `uv run pytest` 命令。闪卡可展开。无编辑器、不跑 Pyodide。
+教程 Markdown 全文只读。左侧 sticky 目录(≥3 节时显示,18rem 宽,`ChapterToc.tsx`;HashRouter 下锚点用 scrollIntoView,不能用 href="#id")。页底给出仓库 assignment 路径和 `uv run pytest` 命令。闪卡可展开。无编辑器、不跑 Pyodide。
+
+**界面缩放**(v0.3.0):`lib/uiZoom.ts` 用 CSS zoom 作用在 `<html>`(WKWebView 无原生 Cmd+ 缩放,这是统一解法,浏览器端同样生效)。⌘/Ctrl±、⌘0、触控板捏合(WebKit gesture 事件)、页头 −/%/+ 按钮;75%–175%,持久化 localStorage `py-learn:ui-zoom:v1`。教程正文 `prose-lg`(18px)。
 
 ## B.6 目录结构(自包含 `web/`)
 
@@ -81,6 +83,7 @@ web/
 - [x] **P2 编辑器 + Pyodide**(2026-07-28):Monaco 接入;Pyodide 运行 pytest;终端红绿。
 - [x] **去掉网页练习**(2026-08-23):按用户要求移除交错编辑器 / Monaco / Pyodide。课程页只读教程;作业在仓库五件套完成。
 - [x] **进度勾选**(2026-08-22):章节页「已学完」;首页/模块卡/顶栏进度条。`bun run dev` 写入 `web/.learner-state.json` + localStorage。
+- [x] **桌面版 DMG / Tauri**(2026-09-14):`web/src-tauri/` 壳(Tauri v2 + 系统 WebKit,渲染同一份 vite 产物,样式与 web 一致)。`bun run build:dmg` → .app + .dmg(DMG 约 3MB,启动 <1s)。前端唯一改动:main.tsx 改 HashRouter。更新流程:改课程 → 重烘焙 → `build:dmg` → 新 DMG 拖入 Applications 覆盖。详见 B.12。
 
 > 顺序:P0→P1 先让全站教程可看;P2 给 Pyodide 章节加交互;P3 收尾。早期即有可用产物。
 
@@ -101,6 +104,7 @@ bun install                 # 装前端依赖(bun)
 bun run dev                 # 开发服务器(HMR)
 bun run build               # 生产构建 → web/dist(纯静态,部署 GitHub Pages)
 bun run build:content       # 重新烘焙课程内容(源仓库 → src/content/)
+bun run build:dmg           # 打 Mac 桌面版(Tauri build → .app + .dmg,需 PATH 含 ~/.cargo/bin)
 ```
 
 ---
@@ -117,5 +121,13 @@ bun run build:content       # 重新烘焙课程内容(源仓库 → src/content
 
 
 - 实施 Web 子项目时,**只在 `web/` 目录内操作**;构建脚本**只读**源仓库章节文件,**绝不修改** `tutorial.md`/`assignment.py`/test 等课程文件。
+
+## B.12 桌面版打包(Tauri,2026-09-14)
+
+- 结构:`web/src-tauri/`(tauri.conf.json / Cargo.toml / src/main.rs / capabilities / .cargo/config.toml / icons)。devUrl 端口 5188(对应 vite.config.ts)。productName 用 ASCII `PythonLearning`(避免打包脚本非 ASCII 问题),窗口标题中文「Python 学习」。
+- **前置**:rustup 装的 Rust 1.98(minimal profile,`~/.cargo/bin`;新终端自动生效,旧终端 `source ~/.cargo/env`)+ Xcode CLT。升级用 `rustup update`。
+- **打包**:`cd web && bun run build:dmg`(= `tauri build`,自动先跑 vite build+重烘焙)。产物:`src-tauri/target/release/bundle/macos/PythonLearning.app` 与 `bundle/dmg/PythonLearning_<ver>_aarch64.dmg`。首次编译约 1-2 分钟,后续增量约 30 秒。改版本号:tauri.conf.json 的 `version`。
+- **代理坑**:cargo 会回退读 git 全局 `http.proxy`(本机指向 127.0.0.1:8118,常不开)→ 已在 `web/src-tauri/.cargo/config.toml` 设 `http.proxy = ""` 项目级绕过(布尔 false 这版 cargo 不收,必须空字符串)。
+- 前端适配:仅 main.tsx `BrowserRouter → HashRouter`(tauri:// 协议下 history 路由失效)。进度勾选走 WebView 自带 localStorage,持久化正常。
 - 保留已有「五件套 + uv pytest」本地学习工作流,网站是叠加的浏览器学习入口,不替代本地流程(Local 章节仍走本地)。
 - 每个实施阶段(P0-P3)完成后,在本文件 B.8 勾选进度,并更新 memory `python-learning-project`。

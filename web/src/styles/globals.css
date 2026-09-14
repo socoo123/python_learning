@@ -107,7 +107,7 @@ body {
 
 /* ===== Markdown 教程排版(实色,无半透明雾)===== */
 .tutorial {
-  @apply prose prose-invert max-w-none;
+  @apply prose prose-lg prose-invert max-w-none;
   @apply prose-headings:scroll-mt-20 prose-headings:font-semibold;
   @apply prose-h1:text-2xl prose-h1:border-b prose-h1:border-border-subtle prose-h1:pb-3 prose-h1:mb-6 prose-h1:text-drac-fg;
   @apply prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-3 prose-h2:text-drac-purple;

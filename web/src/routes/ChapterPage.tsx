@@ -5,6 +5,7 @@ import type { Chapter } from "../types";
 import MarkdownView from "../components/MarkdownView";
 import Flashcards from "../components/Flashcards";
 import ChapterCompleteToggle from "../components/ChapterCompleteToggle";
+import ChapterToc from "../components/ChapterToc";
 import { useLearnerProgress } from "../hooks/useLearnerProgress";
 
 export default function ChapterPage() {
@@ -69,8 +70,13 @@ export default function ChapterPage() {
     );
   }
 
+  const tocItems = chapter.sections.filter((s) => s.heading.trim());
+  const showToc = tocItems.length >= 3;
+
   return (
-    <div className="space-y-8">
+    <div className={showToc ? "lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-10" : undefined}>
+      {showToc && <ChapterToc sections={chapter.sections} />}
+      <div className="min-w-0 space-y-8">
       <nav className="text-sm text-drac-comment">
         <Link to="/" className="hover:text-drac-fg">课程地图</Link>
         <span className="mx-2">/</span>
@@ -92,7 +98,7 @@ export default function ChapterPage() {
       </header>
 
       <section className="space-y-3">
-        <MarkdownView>{chapter.tutorialMd}</MarkdownView>
+        <MarkdownView headingIds={tocItems.map((s) => s.id)}>{chapter.tutorialMd}</MarkdownView>
       </section>
 
       <AssignmentHint chapterNum={chapter.num} moduleDir={module.dir} runMode={chapter.runMode} />
@@ -109,6 +115,7 @@ export default function ChapterPage() {
           </div>
         </details>
       )}
+      </div>
     </div>
   );
 }

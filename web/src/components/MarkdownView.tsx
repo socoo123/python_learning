@@ -14,13 +14,32 @@ function mermaidSource(children: ReactNode): string | null {
   return null;
 }
 
-export default function MarkdownView({ children }: { children: string }) {
+export default function MarkdownView({
+  children,
+  headingIds,
+}: {
+  children: string;
+  /** 与正文 `## ` 标题一一对应的锚点 id(按出现顺序);h2 依次取用,配左侧目录跳转 */
+  headingIds?: string[];
+}) {
+  // 每次渲染重建 components → 计数器从 0 开始,与标题顺序对齐
+  let headingIdx = 0;
   return (
     <div className="tutorial">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{
+          h2({ children: hChildren, ...props }) {
+            const id = headingIds?.[headingIdx++];
+            return id ? (
+              <h2 id={id} className="scroll-mt-24" {...props}>
+                {hChildren}
+              </h2>
+            ) : (
+              <h2 {...props}>{hChildren}</h2>
+            );
+          },
           pre({ children: preChildren }) {
             const chart = mermaidSource(preChildren);
             if (chart !== null) return <MermaidBlock chart={chart} />;

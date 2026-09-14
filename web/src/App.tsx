@@ -4,7 +4,52 @@ import ModulePage from "./routes/ModulePage";
 import ChapterPage from "./routes/ChapterPage";
 import { useTheme } from "./hooks/useTheme";
 import { useLearnerProgress } from "./hooks/useLearnerProgress";
+import { useUiZoom } from "./hooks/useUiZoom";
+import { ZOOM_MAX, ZOOM_MIN } from "./lib/uiZoom";
 import ProgressBar from "./components/ProgressBar";
+
+function ZoomControl() {
+  const { zoom, zoomIn, zoomOut, reset } = useUiZoom();
+  const btn =
+    "px-2 py-1 text-xs text-drac-comment hover:text-drac-fg disabled:cursor-default disabled:opacity-40";
+  return (
+    <div
+      className="inline-flex items-center rounded-lg border border-border-subtle bg-bg-card p-0.5 font-mono"
+      role="group"
+      aria-label="界面缩放"
+    >
+      <button
+        type="button"
+        title="缩小 (⌘− / 触控板捏合)"
+        aria-label="缩小界面"
+        onClick={zoomOut}
+        disabled={zoom <= ZOOM_MIN}
+        className={btn}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        title="重置 (⌘0)"
+        aria-label="重置缩放"
+        onClick={reset}
+        className="w-11 text-center text-[11px] text-drac-comment hover:text-drac-fg"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        type="button"
+        title="放大 (⌘+ / 触控板张开)"
+        aria-label="放大界面"
+        onClick={zoomIn}
+        disabled={zoom >= ZOOM_MAX}
+        className={btn}
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -69,6 +114,7 @@ export default function App() {
               Python 文档 ↗
             </a>
             <ThemeToggle />
+            <ZoomControl />
           </nav>
         </div>
       </header>
