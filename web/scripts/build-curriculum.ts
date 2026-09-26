@@ -1,6 +1,6 @@
 /**
  * build-curriculum.ts —— 把源仓库课程烘焙成 web 可消费 JSON。
- * 运行:`bun run build:content`(dev/build 时 vite 插件自动调用)。
+ * 运行:`bun run build:content`(结束后会再跑 render-pages,刷新静态 HTML)。
  * 只读源文件,绝不修改。源仓库不在(独立 clone web/)时静默跳过。
  */
 import {

@@ -37,30 +37,30 @@ ch{NN}/tutorial.md + ch{NN}_assignment.py(... 骨架) + test_ch{NN}_assignment.p
 
 ## Web 子项目（`web/`）
 
-**目标**：独立可移植的 React 静态站；模块→章节→**只读教程**。作业不在网页里做，继续走仓库五件套 + `uv run pytest`。
+**目标**：可上 GitHub Pages 的预渲染静态站；模块→章节→**只读教程**。作业不在网页里做，继续走仓库五件套 + `uv run pytest`。
 
 | 点 | 约定 |
 |----|------|
-| 技术 | Bun + Vite + React 18 + TS + Tailwind；护眼米色 / 德古拉；dev 端口 **5188** |
-| 可移植 | 烘焙产物 `web/src/content/`（`index.json` + `shared.json` + `chapters/`）**提交 git**；单独 clone `web/` 就能跑 |
-| 内容管线 | `web/scripts/build-curriculum.ts` **只读**源仓库 → 烘焙；**绝不改**课程 `.md/.py` |
+| 技术 | 预渲染 HTML + 少量经典脚本；护眼米色 / 德古拉；本地端口 **5188**。没有 Vite / React |
+| 可移植 | `web/index.html` + `modules/` + `chapters/` + `assets/` 用相对路径，Pages 直接托管。内容 JSON 在 `web/src/content/` |
+| 内容管线 | `build-curriculum.ts` **只读**源仓库 → JSON；`render-pages.ts` → HTML。`bun run build:content` 两步都跑。**绝不改**课程 `.md/.py` |
 | 布局 | 教程 Markdown → 本地作业路径/pytest 命令 → 闪卡 |
 | 作业 | **禁止**网页编辑器 / Pyodide / 交错式小练习。实现写在 `chNN_assignment.py` |
-| 内容策略 | web 端可重组/精简/改写呈现，不必照搬 `.md` |
+| 部署 | `.github/workflows/pages.yml` 发布静态文件。仓库 Pages Source 选 GitHub Actions |
 
-### Web 当前进度（2026-08-23）
+### Web 当前进度（2026-09-26）
 
-- 课程页已改为**只读教程**；Monaco / Pyodide / 交错练习已移除（用户改在仓库 markdown/py 里写作业）。
-- **40 章全烘焙**；**M1–M6 均 `available=true`**。
-- 内容靠 `bun run build:content` 从源五件套烘焙；改源后需重跑并提交 `src/content/`。
-- 学习进度：章节页勾选「已学完」；首页/模块/顶栏进度条。`bun run dev` 写入 `web/.learner-state.json` + localStorage。
+- 课程页是**只读教程**；网页不写作业、不跑 Pyodide。
+- **40 章**已生成静态页；**M1–M6 均 `available=true`**。
+- 改源后跑 `bun run build:content`，提交 `src/content/` 和生成的 HTML。
+- 学习进度：章节页勾选「已学完」，存在浏览器 localStorage。
 
 ### 关键命令
 
 ```bash
-cd web && bun install && bun run dev          # :5188
-bun run build:content                        # 源 → curriculum.json
-bun run build                                # → dist/
+cd web && python3 -m http.server 5188   # 或双击 启动学习站.command
+bun run build:content                   # 源 → JSON → 静态 HTML
+bun run render                          # 只重刷 HTML
 ```
 
 ## 操作红线

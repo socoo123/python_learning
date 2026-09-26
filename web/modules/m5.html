@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Python 全栈学习</title>
-    <link rel="stylesheet" href="./assets/css/style.css" />
+    <title>AI 框架 — Python 全栈学习</title>
+    <link rel="stylesheet" href="../assets/css/style.css" />
     <script>
       try {
         var t = localStorage.getItem("py-theme");
@@ -20,10 +20,10 @@
   <body>
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="./index.html"><span class="brand-logo">🐍</span><span>Python 全栈学习</span></a>
+        <a class="brand" href="../index.html"><span class="brand-logo">🐍</span><span>Python 全栈学习</span></a>
         <div data-header-progress></div>
         <nav class="topnav">
-          <a class="nav-link active" href="./index.html">课程地图</a>
+          <a class="nav-link" href="../index.html">课程地图</a>
           <a class="nav-link" href="https://docs.python.org/3/" target="_blank" rel="noreferrer">Python 文档 ↗</a>
           <div class="theme-toggle" data-theme-toggle role="group" aria-label="主题切换">
             <button type="button" data-theme-value="parchment" title="护眼米色" aria-pressed="false">☀️<span class="tt-text">护眼</span></button>
@@ -39,16 +39,16 @@
     </header>
 
     <main class="wrap">
-      <div id="page-root"></div>
+      <div id="page-root" data-module-id="m5"></div>
     </main>
 
     <footer class="site-footer">Python 全栈学习 · 教程只读 · 作业在仓库里写</footer>
 
-    <script>window.SITE_ROOT = "./";</script>
-    <script src="./assets/js/data.js"></script>
-    <script src="./assets/js/dom.js"></script>
-    <script src="./assets/js/learner-state.js"></script>
-    <script src="./assets/js/app-common.js"></script>
-    <script src="./assets/js/index.js"></script>
+    <script>window.SITE_ROOT = "../";</script>
+    <script src="../assets/js/data.js"></script>
+    <script src="../assets/js/dom.js"></script>
+    <script src="../assets/js/learner-state.js"></script>
+    <script src="../assets/js/app-common.js"></script>
+    <script src="../assets/js/module.js"></script>
   </body>
 </html>

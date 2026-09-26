@@ -1,46 +1,44 @@
-# Python 全栈学习 · 课程网站
+# Python 全栈学习 · 静态课程站
 
-把课程（`../01_python_core` 等章节）做成 React 静态网站：模块 → 章节 → **只读教程**。
-作业在仓库五件套里写，用 `uv run pytest` 验证。**全程 Bun**。
+模块 → 章节 → **只读教程**。作业仍在仓库五件套里写，用 `uv run pytest` 验证。
 
-## 快速开始
+页面是事先生成的 HTML（`index.html`、`modules/`、`chapters/`），相对路径，不依赖 Vite。GitHub Pages 直接托管这一份；双击 `index.html` 或 `启动学习站.command` 也能在本机看。
+
+## 本地看站
 
 ```bash
 cd web
-bun install          # 装依赖
-bun run dev          # 开发服务器(http://localhost:5188)
+python3 -m http.server 5188   # http://localhost:5188
 ```
 
-dev/build 时会自动调用 `build:content` 重新烘焙课程内容（只要 `../` 源仓库存在）。
-
-## 常用命令
-
-| 命令 | 作用 |
-|------|------|
-| `bun run dev` | 开发服务器(HMR),自动烘焙内容 |
-| `bun run build` | 生产构建 → `dist/` |
-| `bun run build:content` | 手动重新烘焙:`../` 源仓库 → `src/content/{index,shared,chapters}` |
-| `bun run preview` | 预览生产构建 |
-
-## 学习进度
-
-用 `bun run dev` 时，勾选「已学完」会写入 **`web/.learner-state.json`**（已 gitignore）。刷新、关标签、换浏览器再开同一个 dev 服务，进度还在。
-
-静态部署（没有 dev API）时退化为浏览器 localStorage。
-
-- **内容烘焙**:`scripts/build-curriculum.ts` 扫描源仓库章节,产出:
-  - `src/content/index.json` — 模块/章节轻量目录(首页用)
-  - `src/content/shared.json` — conftest + mock 数据
-  - `src/content/chapters/chXX.json` — 单章全文(教程/作业/测试/闪卡),**点进章节才懒加载**
-  - 产物提交进 git,单独 clone `web/` 也能跑(可移植)
-- **网站呈现**:只读教程 + 闪卡 + 本地作业路径/`uv run pytest` 命令。不在浏览器里写代码、不跑 Pyodide。
+也可以双击 `启动学习站.command`，或直接双击 `index.html`（`file://`）。
 
 ## 内容更新
 
-源课程文件改动后:`bun run build:content` 重新烘焙 → 提交 `src/content/`。
+源课程（`../01_python_core` 等）改动后：
 
-新增可用模块:在 `scripts/build-curriculum.ts` 的 `MODULE_DEFS` 里把对应模块 `available` 改 `true`。
+```bash
+cd web
+bun run build:content
+```
 
-## 技术栈
+这一步会先烘焙 `src/content/`，再生成静态 HTML。只改了 JSON、想重刷页面时：`bun run render`。
 
-Bun · Vite · React 18 · TypeScript · Tailwind CSS · react-markdown
+生成物要提交 git：`index.html`、`modules/`、`chapters/`、`assets/js/data.js`，以及 `src/content/`。
+
+## GitHub Pages
+
+仓库里的 `.github/workflows/pages.yml` 会在推到 `main` 后，把下面这些文件发布出去：
+
+- `index.html`、`.nojekyll`
+- `chapters/`、`modules/`、`assets/`
+
+仓库 **Settings → Pages → Source** 选 **GitHub Actions**。站点地址是 `https://<用户名>.github.io/python_learning/`。页面之间用相对路径，不写死仓库名。
+
+## 桌面版
+
+`bun run build:dmg` 仍走 Tauri。打包前会把静态页拷到 `desktop-dist/`（不进 git），避免把源码目录打进安装包。
+
+## 学习进度
+
+「已学完」存在浏览器 `localStorage`（键 `py-learn:learner-state:v1`），和以前的网页是同一把钥匙。GitHub Pages 上没有本地文件可写。

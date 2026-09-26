@@ -17,28 +17,26 @@
 
 ---
 
-# B. Web 网站子项目(Bun + React 静态站)
+# B. Web 网站子项目(预渲染静态页,可上 GitHub Pages)
 
-> 状态:**已实施;2026-08-23 起网页只读教程,不再内嵌练习编辑器。**
-> 目标:独立可移植的 React 静态站,模块→章节→课程页。教程在网页读;作业在仓库五件套里写,`uv run pytest` 验证。
+> 状态:**2026-09-26 起改为预渲染 HTML,不再使用 Vite / React。** 网页只读教程;作业在仓库五件套里写,`uv run pytest` 验证。
+> 目标:相对路径的静态站,推到 `main` 后由 GitHub Actions 发布到 Pages。双击 `web/index.html` 也能看。
 
 ## B.1 已拍板的决策
 
-1. **独立、可移植**:web 是自包含项目。课程内容在**构建时烘焙**进 `web/src/content/` 并提交 git → 单独 clone `web/` + `bun install` + `bun run dev` 就能跑。
-2. **网页只读,作业走仓库**:课程页只渲染 tutorial Markdown + 闪卡 + 本地作业路径。不提供 Monaco / Pyodide / 交错小练习。实现写在 `chNN_assignment.py`。
-3. **全程 Bun**:`bun install` / `bun run dev` / `bun run build` 全部经 Bun。内容烘焙脚本无需编译。
+1. **独立、可移植**:站点文件就是 `web/index.html`、`web/modules/`、`web/chapters/`、`web/assets/`。相对路径,不写死仓库名。内容 JSON 在 `web/src/content/`,提交 git。
+2. **网页只读,作业走仓库**:课程页渲染 tutorial Markdown + 闪卡 + 本地作业路径。不提供 Monaco / Pyodide / 交错小练习。实现写在 `chNN_assignment.py`。
+3. **看站不需要构建**:`python3 -m http.server 5188`,或双击 `web/启动学习站.command` / `web/index.html`。只有课程内容变了才跑 `bun run build:content`(烘焙 JSON 并重新生成 HTML)。
 
 ## B.3 技术栈明细
 
 | 关注点 | 选型 | 理由 |
 |--------|------|------|
-| 运行时+包管理 | **Bun** | 全程统一;装包快;原生跑 TS |
-| 构建/HMR | **Vite**(跑在 Bun 上) | React SPA 生态最成熟,HMR 好 |
-| 框架 | **React 18 + TypeScript** | 用户指定 React |
-| 样式 | **Tailwind CSS + shadcn/ui** | 深色主题好做,组件省心 |
-| 路由 | **react-router-dom v6** | `/`、`/module/:id`、`/chapter/:id` |
-| Markdown 渲染 | **react-markdown + remark-gfm + rehype-highlight** | 渲染 tutorial.md |
-| 进度持久化 | **localStorage + `web/.learner-state.json`** | 章节「已学完」勾选。`bun run dev` 写本地文件；静态部署回退 localStorage |
+| 页面 | **预渲染 HTML** | `index.html` + `modules/mN.html` + `chapters/chNN.html`,相对路径,Pages 直接托管 |
+| 脚本 | **经典 JS**(marked / highlight.js / mermaid) | 无打包步骤;mermaid 按需加载 |
+| 样式 | **手写 CSS** | 护眼米色 / 德古拉,`assets/css/style.css` |
+| 内容 | **Bun 脚本** | `build-curriculum.ts` 烘焙 JSON,`render-pages.ts` 生成 HTML |
+| 进度持久化 | **localStorage** | 键 `py-learn:learner-state:v1`。Pages 与本地打开同一把钥匙 |
 
 ## B.4 内容管线(自包含、可移植的核心)
 
@@ -47,27 +45,27 @@
   - `shared.json`:`conftest` + mock 数据
   - `chapters/chXX.json`:单章全文(tutorial / assignment / test / review / sections),**课程页懒加载**
 - **`src/content/` 提交进 git** → 网站运行时只读它,**不依赖源仓库** → web/ 可独立 clone 运行 / 独立上传 GitHub。
-- 源课程更新 → 跑 `bun run build:content` 重新烘焙 → 提交 diff。
+- 源课程更新 → 跑 `bun run build:content`(烘焙 JSON **并** `render-pages` 刷新 HTML) → 提交 `src/content/` 和生成的 HTML。
 - 判断 runMode:扫 `assignment.py` / `test_*.py` 的 import —— 出现 `fastapi`/`sqlalchemy`/`httpx`/`psutil`/`typer`/`rich`/`schedule`/`anthropic`/`openai` 等(见烘焙脚本 `LOCAL_IMPORTS`) → `local`;否则 `pyodide`。M5 目录强制 `local`。Ch24–27 因 subprocess/psutil/typer/schedule 均为 Local;Ch23 仅 pathlib 故仍为 Pyodide。
 
 ## B.5 课程页
 
-教程 Markdown 全文只读。左侧 sticky 目录(≥3 节时显示,18rem 宽,`ChapterToc.tsx`;HashRouter 下锚点用 scrollIntoView,不能用 href="#id")。页底给出仓库 assignment 路径和 `uv run pytest` 命令。闪卡可展开。无编辑器、不跑 Pyodide。
+教程 Markdown 全文只读。左侧 sticky 目录(≥3 节、宽屏时显示)。页底给出仓库 assignment 路径和 `uv run pytest` 命令。闪卡可展开。无编辑器、不跑 Pyodide。
 
-**界面缩放**(v0.3.0):`lib/uiZoom.ts` 用 CSS zoom 作用在 `<html>`(WKWebView 无原生 Cmd+ 缩放,这是统一解法,浏览器端同样生效)。⌘/Ctrl±、⌘0、触控板捏合(WebKit gesture 事件)、页头 −/%/+ 按钮;75%–175%,持久化 localStorage `py-learn:ui-zoom:v1`。教程正文 `prose-lg`(18px)。
+**界面缩放**:CSS zoom 作用在 `<html>`。⌘/Ctrl±、⌘0、触控板捏合、页头 −/%/+ ;75%–175%,持久化 localStorage `py-learn:ui-zoom:v1`。教程正文 18px。
 
 ## B.6 目录结构(自包含 `web/`)
 
 ```
 web/
-├── package.json
-├── scripts/build-curriculum.ts
-├── src/
-│   ├── content/                  # 烘焙产物,提交 git
-│   ├── routes/ChapterPage.tsx    # 只读教程 + 本地作业提示 + 闪卡
-│   ├── components/MarkdownView.tsx
-│   └── lib/learnerState.ts       # 进度
-└── README.md
+├── index.html                    # 首页,相对路径
+├── modules/                      # m1.html …
+├── chapters/                     # ch01.html … 内嵌教程
+├── assets/                       # css / js / vendor
+├── .nojekyll
+├── scripts/build-curriculum.ts   # 源五件套 → src/content
+├── scripts/render-pages.ts       # src/content → 上面的 HTML
+└── src/content/                  # 烘焙 JSON,提交 git
 ```
 
 ## B.7 主题
@@ -82,30 +80,30 @@ web/
 - [x] **开放 M5–M6**(2026-08-01):五件套已生成并烘焙;M5 全 Local、M6 全 Pyodide;`available=true`。40 章进 web。
 - [x] **P2 编辑器 + Pyodide**(2026-07-28):Monaco 接入;Pyodide 运行 pytest;终端红绿。
 - [x] **去掉网页练习**(2026-08-23):按用户要求移除交错编辑器 / Monaco / Pyodide。课程页只读教程;作业在仓库五件套完成。
+- [x] **静态页 + GitHub Pages**(2026-09-26):去掉 Vite/React,预渲染 HTML。`.github/workflows/pages.yml` 发布 `web/` 里的静态文件。
 - [x] **进度勾选**(2026-08-22):章节页「已学完」;首页/模块卡/顶栏进度条。`bun run dev` 写入 `web/.learner-state.json` + localStorage。
-- [x] **桌面版 DMG / Tauri**(2026-09-14):`web/src-tauri/` 壳(Tauri v2 + 系统 WebKit,渲染同一份 vite 产物,样式与 web 一致)。`bun run build:dmg` → .app + .dmg(DMG 约 3MB,启动 <1s)。前端唯一改动:main.tsx 改 HashRouter。更新流程:改课程 → 重烘焙 → `build:dmg` → 新 DMG 拖入 Applications 覆盖。详见 B.12。
+- [x] **桌面版 DMG / Tauri**(2026-09-14):`web/src-tauri/` 壳。2026-09-26 起加载同一份静态 HTML(`desktop-dist/`)。更新流程:改课程 → `build:content` → `build:dmg`。详见 B.12。
 
 > 顺序:P0→P1 先让全站教程可看;P2 给 Pyodide 章节加交互;P3 收尾。早期即有可用产物。
 
 ## B.9 关键风险与决策点
 
-1. **Pyodide 体积**(~10MB):懒加载,只在首次点运行时拉,首页不阻塞。
-2. **pytest in Pyodide**:验证 `micropip install pytest` 能跑现有测试;现有测试依赖 `from conftest import load_mock_json` + mock 数据,需一并写入虚拟 FS 并设 sys.path。
-3. **可移植性**:`src/content/` 必须自包含(嵌入 mock 数据 + test 源码),否则单独 clone web/ 跑不起来。
-4. **Bun + Vite 兼容**:Vite 在 Bun 下运行良好;若遇问题回退 `node`/`npm`(影响很小)。
-5. **Monaco vs CodeMirror**:默认 Monaco;嫌包大换 CodeMirror 6。
-6. **内容同步**:源课程改动 → `bun run build:content` 重烘焙 → 提交。
+1. **GitHub Pages 子路径**:项目站地址是 `https://<user>.github.io/python_learning/`。页面只用相对路径(`./`、`../`),不要写以 `/` 开头的资源地址。
+2. **Jekyll**:发布目录必须带 `.nojekyll`,否则 Pages 会吞掉下划线开头的文件。
+3. **章节 HTML 内嵌教程**:`chapters/chNN.html` 把教程 JSON 写进页面,这样 `file://` 双击也能开,不必再发请求。改教程后要重新 `render-pages`。
+4. **内容同步**:源课程改动 → `bun run build:content`(JSON + HTML) → 提交。
 
-## B.10 常用命令(实施后)
+## B.10 常用命令
 
 ```bash
 cd web
-bun install                 # 装前端依赖(bun)
-bun run dev                 # 开发服务器(HMR)
-bun run build               # 生产构建 → web/dist(纯静态,部署 GitHub Pages)
-bun run build:content       # 重新烘焙课程内容(源仓库 → src/content/)
-bun run build:dmg           # 打 Mac 桌面版(Tauri build → .app + .dmg,需 PATH 含 ~/.cargo/bin)
+python3 -m http.server 5188   # 本地看站;或双击 启动学习站.command
+bun run build:content         # 源仓库 → src/content/ → 静态 HTML
+bun run render                # 只根据现有 JSON 重刷 HTML
+bun run build:dmg             # Mac 桌面版(Tauri;先拷到 desktop-dist/)
 ```
+
+GitHub Pages:推到 `main` 触发 `.github/workflows/pages.yml`。仓库 Settings → Pages → Source 选 **GitHub Actions**。发布的只有 `index.html`、`.nojekyll`、`chapters/`、`modules/`、`assets/`。
 
 ---
 
@@ -124,10 +122,10 @@ bun run build:dmg           # 打 Mac 桌面版(Tauri build → .app + .dmg,需 
 
 ## B.12 桌面版打包(Tauri,2026-09-14)
 
-- 结构:`web/src-tauri/`(tauri.conf.json / Cargo.toml / src/main.rs / capabilities / .cargo/config.toml / icons)。devUrl 端口 5188(对应 vite.config.ts)。productName 用 ASCII `PythonLearning`(避免打包脚本非 ASCII 问题),窗口标题中文「Python 学习」。
-- **前置**:rustup 装的 Rust 1.98(minimal profile,`~/.cargo/bin`;新终端自动生效,旧终端 `source ~/.cargo/env`)+ Xcode CLT。升级用 `rustup update`。
-- **打包**:`cd web && bun run build:dmg`(= `tauri build`,自动先跑 vite build+重烘焙)。产物:`src-tauri/target/release/bundle/macos/PythonLearning.app` 与 `bundle/dmg/PythonLearning_<ver>_aarch64.dmg`。首次编译约 1-2 分钟,后续增量约 30 秒。改版本号:tauri.conf.json 的 `version`。
+- 结构:`web/src-tauri/`(tauri.conf.json / Cargo.toml / src/main.rs / capabilities / .cargo/config.toml / icons)。devUrl 端口 5188(静态文件服务,目录是 `web/`)。productName 用 ASCII `PythonLearning`(避免打包脚本非 ASCII 问题),窗口标题中文「Python 学习」。
+- **前置**:rustup 装的 Rust(minimal profile,`~/.cargo/bin`;新终端自动生效,旧终端 `source ~/.cargo/env`)+ Xcode CLT。升级用 `rustup update`。
+- **打包**:`cd web && bun run build:dmg`(= `tauri build`,先 `prepare-desktop.ts` 把静态页拷到 `desktop-dist/`)。产物:`src-tauri/target/release/bundle/macos/PythonLearning.app` 与 `bundle/dmg/PythonLearning_<ver>_aarch64.dmg`。改版本号:tauri.conf.json 的 `version`。
 - **代理坑**:cargo 会回退读 git 全局 `http.proxy`(本机指向 127.0.0.1:8118,常不开)→ 已在 `web/src-tauri/.cargo/config.toml` 设 `http.proxy = ""` 项目级绕过(布尔 false 这版 cargo 不收,必须空字符串)。
-- 前端适配:仅 main.tsx `BrowserRouter → HashRouter`(tauri:// 协议下 history 路由失效)。进度勾选走 WebView 自带 localStorage,持久化正常。
+- 前端是多页静态 HTML(相对路径),`tauri://` 下不用 history 路由。进度勾选走 WebView 自带 localStorage。
 - 保留已有「五件套 + uv pytest」本地学习工作流,网站是叠加的浏览器学习入口,不替代本地流程(Local 章节仍走本地)。
 - 每个实施阶段(P0-P3)完成后,在本文件 B.8 勾选进度,并更新 memory `python-learning-project`。
